@@ -4740,7 +4740,7 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
 
   // (i) Must-not: kein gespeichertes Feld, kein zweiter Baustein, kein zweiter Schreibweg.
   ok('#145 (must-not) die Zugaenglichkeit hat kein gespeichertes Feld angelegt',
-    store.SCHEMA_VERSION===6 && store.PROJEKT_VERSION===2
+    store.SCHEMA_VERSION === 7 && store.PROJEKT_VERSION===2
     && !/aria|ax-b-|ax-tip/i.test(localStorage.getItem('sembla:elemente')||''));
   ok('#145 (must-not) Modul 1 baut den Baustein nicht nach — es benutzt ihn',
     /import \* as AX from '\.\/shared\/sembla-ax\.js'/.test(html) && /AX=S\.AX;/.test(html)

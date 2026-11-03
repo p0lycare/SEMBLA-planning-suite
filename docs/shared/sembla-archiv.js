@@ -47,8 +47,9 @@
 
 import {
   alleGeschosse, alleWaende, benenneUm, findeGebaeude, findeGeschoss, findeWand,
-  fuegeGebaeudeHinzu, fuegeGeschossHinzu, geschossMengen, leereMappe, mappeObjekt, neueId, normMappe,
-  parseMappe, setzeBemassung, setzeGeschossHoehe, setzePlan, setzeUrsprung, setzeWand,
+  fuegeGebaeudeHinzu, fuegeGeschossHinzu, geschossMengen, kuerzelFrei, leereMappe, mappeObjekt, neueId,
+  normMappe, parseMappe, setzeBemassung, setzeGeschossHoehe, setzeGeschossKuerzel, setzePlan,
+  setzeUrsprung, setzeWand,
 } from "./sembla-projektmappe.js";
 import { katalogObjekt } from "./sembla-katalog.js";
 import { dateiRumpf, gesamtDaten, pfadText, umfang } from "./sembla-gesamtstueckliste.js";
@@ -837,12 +838,16 @@ function _uebernahmeGeschoss(gelesen, w, zielMappe) {
   // benutzt und umbenannt — sonst stuende daneben ein leeres „Geschoss 1“.
   const erstes = ziel.gebaeude[0].geschosse[0];
   let schaleId;
+  // Das Geschosskuerzel reist mit, solange es im Zielgebaeude frei ist; sonst wird
+  // eines aus der Bezeichnung vorgeschlagen (je Gebaeude eindeutig).
   if (neu && ziel.gebaeude[0].geschosse.length === 1 && erstes
       && !erstes.waende.length && !erstes.bemassungen.length && !erstes.plan) {
     schaleId = erstes.id;
     ziel = benenneUm(ziel, schaleId, gs.name);
+    ziel = setzeGeschossKuerzel(ziel, schaleId, gs.kuerzel);
   } else {
-    const r = fuegeGeschossHinzu(ziel, gebId, gs.name, gs.hoehe_mm);
+    const k = kuerzelFrei(ziel, gebId, gs.kuerzel) ? gs.kuerzel : undefined;
+    const r = fuegeGeschossHinzu(ziel, gebId, gs.name, gs.hoehe_mm, k);
     ziel = r.mappe;
     schaleId = r.id;
   }
@@ -853,8 +858,14 @@ function _uebernahmeGeschoss(gelesen, w, zielMappe) {
   ziel = setzeGeschossHoehe(ziel, schaleId, gs.hoehe_mm);
   ziel = setzeUrsprung(ziel, schaleId, gs.ursprung_mm);
   if (gs.plan) ziel = setzePlan(ziel, schaleId, gs.plan);
+  // Wandnummern gelten je GEBAEUDE: in ein NEU angelegtes Projekt reisen die gueltigen
+  // Nummern der Quelle mit; in einem bestehenden Gebaeude bekommen die Waende die
+  // naechsten Nummern des Ziels (eine Quellnummer koennte dort schon vergeben gewesen
+  // sein — vergeben wird nie zweimal). Eine schon im Zielgebaeude stehende Wand behaelt
+  // ihre Nummer (`setzeWand`).
   for (const wd of gs.waende) {
-    ziel = setzeWand(ziel, schaleId, { id: wd.id, name: wd.name, datei: null, lage: wd.lage });
+    ziel = setzeWand(ziel, schaleId, { id: wd.id, name: wd.name, datei: null, lage: wd.lage,
+      ...(neu ? { nr: wd.nr } : {}) });
   }
   for (const b of gs.bemassungen) ziel = setzeBemassung(ziel, schaleId, { ...b, id: neueId("bm") });
 

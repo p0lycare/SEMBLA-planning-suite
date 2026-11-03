@@ -92,6 +92,8 @@ function _leer(ebene, grund, bezug) {
 function _ref(gebaeude, geschoss, wand) {
   return {
     wandId: String(wand.id), name: wand.name || String(wand.id),
+    // Feste Wandnummer je Gebaeude ([L-14]) — die Zahl der Lageplan-Blase.
+    nr: wand.nr ?? null,
     gebaeudeId: gebaeude ? gebaeude.id : null, gebaeude: gebaeude ? gebaeude.name : null,
     geschossId: geschoss ? geschoss.id : null, geschoss: geschoss ? geschoss.name : null,
   };

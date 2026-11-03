@@ -2412,16 +2412,14 @@ function planeWand(id){
 // ---------------------------------------------------------------------------
 //  Duplizieren und Löschen der aktiven Wand (#74)
 // ---------------------------------------------------------------------------
-/** Unterscheidbarer, freier Name für eine Kopie — nur ein Vorschlag, umbenennbar. */
-function kopieName(basis){
-  const vorhanden = new Set(store.listeElemente().map(e => e.name));
-  const erste = `${basis} (Kopie)`;
-  if (!vorhanden.has(erste)) return erste;
-  for (let i = 2; i < 999; i++) {
-    const n = `${basis} (Kopie ${i})`;
-    if (!vorhanden.has(n)) return n;
-  }
-  return erste;
+/**
+ * Der Name einer eingetragenen Wand — `Wand_<Kuerzel>-<Nr>`, vergeben von der
+ * Projektmappe beim Eintragen (Entscheid 03.11.2026). Gelesen wird er erst NACH dem
+ * Eintragen; einen Vorschlag oder ein „(Kopie)“ gibt es nicht mehr.
+ */
+function eingetragenerName(id){
+  const ort = store.wandVerortung(id);
+  return (ort && ort.wand.name) || (store.holeElement(id) || {}).name || id;
 }
 
 /**
@@ -2491,13 +2489,16 @@ function dupliziereWand(){
   }
   const vor = mappenStand();
   const aktivVor = store.aktivId();
-  const name = kopieName(el.name || w.id);
   // VOR dem Anlegen gerechnet: gemessen wird am Stand der Ausgangswand.
   const k = kopieLage(w.id, verortung());
-  let id;
+  let id, name;
   try {
-    id = store.dupliziere(w.id, name);
-    store.verorteWand(id, gs.id, { name, lage: k.lage });
+    // Gleich unter dem kuenftigen Namen anlegen — sonst schriebe das Eintragen den
+    // Namen in einem zweiten Schritt nach.
+    id = store.dupliziere(w.id, naechsterName());
+    // Mit dem Eintragen bekommt die Kopie die NAECHSTE Wandnummer des Gebaeudes.
+    store.verorteWand(id, gs.id, { lage: k.lage });
+    name = eingetragenerName(id);
   } catch (e) {
     // Kein halber Stand: eine schon angelegte, aber nicht eingetragene Kopie geht wieder.
     if (id) { try { store.loesche(id); } catch { /* schon weg */ } }
@@ -4184,7 +4185,9 @@ function wandFertig(a, b){
 
   let hoehe, id, anlage;
   try { hoehe = neueHoehe(); } catch (e) { zeige('Nicht angelegt: ' + fehlerText(e), false); return null; }
-  const name = naechsterName();
+  // Vorlaeufiger Name bis zum Eintragen — danach heisst die Wand `Wand_<Kuerzel>-<Nr>`
+  // mit der naechsten Nummer des Gebaeudes (vergeben von der Projektmappe).
+  let name = naechsterName();
   try {
     // Gerechnet und gespeichert wird über den gemeinsamen Anlagepfad (#15/#62) — dieselbe
     // DOM-freie Funktion, die auch Modul 0 benutzt. Sie bestimmt die Verwendungsstellen aus
@@ -4196,12 +4199,13 @@ function wandFertig(a, b){
       wandtyp: $('gp-wandtyp').value });
     id = anlage.id;
   } catch (e) { zeige('Nicht angelegt: ' + fehlerText(e), false); return null; }
-  try { store.verorteWand(id, gs.id, { name, lage: v.lage }); }
+  try { store.verorteWand(id, gs.id, { lage: v.lage }); }
   catch (e) {
     buchen(vor, [id]);
     zeige(`„${name}“ angelegt, aber nicht eingetragen: ${fehlerText(e)}`, false);
     return id;
   }
+  name = eingetragenerName(id);
   waehle(id);
   try { store.setzeAktiv(id); } catch { /* nicht aktivierbar: wird unten benannt */ }
 
@@ -4221,14 +4225,17 @@ function wandFertig(a, b){
   return id;
 }
 
-/** Fortlaufender Name für neu gezeichnete Wände (nur ein Vorschlag, umbenennbar in Modul 0). */
+/**
+ * Vorlaeufiger Name einer neu gezeichneten Wand — `Wand_<Kuerzel>-<naechste Nr>` des
+ * aktiven Geschosses. Verbindlich ist erst der beim Eintragen vergebene Name
+ * (`eingetragenerName`); ohne Geschoss bleibt es bei „Wand“.
+ */
 function naechsterName(){
-  const vorhanden = new Set(store.listeElemente().map(e => e.name));
-  for (let i = 1; i < 999; i++) {
-    const n = 'Wand ' + i;
-    if (!vorhanden.has(n)) return n;
-  }
-  return 'Wand';
+  const t = store.aktivesGeschoss();
+  const m = store.holeMappe();
+  if (!t || !m) return 'Wand';
+  try { return MAPPE.wandName(t.geschoss.kuerzel, MAPPE.naechsteWandNr(m, t.gebaeude.id)); }
+  catch { return 'Wand'; }
 }
 
 // ---------------------------------------------------------------------------

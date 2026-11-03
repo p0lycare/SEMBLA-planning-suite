@@ -78,8 +78,11 @@ const umgetragen = M.setzeWand(m, gs0, { id: "w-1" });
 t("Wand umtragen: steht genau einmal in der Mappe",
   M.alleWaende(umgetragen).filter((e) => e.wand.id === "w-1").length === 1);
 t("Wand umtragen: landet im Zielgeschoss", M.findeWand(umgetragen, "w-1").geschoss.id === gs0);
-t("Wand umtragen: Name und Lage bleiben erhalten (kein Datenverlust)",
-  M.findeWand(umgetragen, "w-1").wand.name === "EG-W01"
+// Das Zielgeschoss liegt in einem ANDEREN Gebaeude: die Wandnummer gilt je Gebaeude und
+// reist nicht mit — die Wand bekommt dort die naechste Nummer, die Lage bleibt.
+t("Wand umtragen: Lage bleibt erhalten, Name folgt Kuerzel und Nummer des Zielgebaeudes",
+  M.findeWand(m, "w-1").wand.name === "Wand_EG-1"
+  && M.findeWand(umgetragen, "w-1").wand.name === "Wand_G1-1"
   && M.findeWand(umgetragen, "w-1").wand.lage.laenge_grid === 24);
 t("Mappe nach Umtragen weiterhin gueltig", M.validiereMappe(umgetragen).length === 0);
 
@@ -100,7 +103,8 @@ t("Gebaeude mit Geschossen wird nicht still geloescht",
 
 // Umbenennen
 t("umbenennen: Geschoss", M.findeGeschoss(M.benenneUm(m, b.id, "1. OG"), b.id).geschoss.name === "1. OG");
-t("umbenennen: Wand", M.findeWand(M.benenneUm(m, "w-1", "Neu"), "w-1").wand.name === "Neu");
+t("umbenennen: eine Wand hat keinen freien Namen — benannt abgewiesen",
+  wirft(() => M.benenneUm(m, "w-1", "Neu"), /nicht frei änderbar/));
 t("umbenennen: Projekt", M.benenneUm(m, m.projekt.id, "Neu AWG").projekt.name === "Neu AWG");
 t("umbenennen: unbekannte Kennung wirft", wirft(() => M.benenneUm(m, "nix", "X"), /Unbekannte Kennung/));
 
@@ -171,7 +175,11 @@ const alt = [{ id: "w-alt1", name: "Wand A" }, { id: "w-alt2", name: "Wand B" }]
 const uebernommen = M.uebernehmeElemente(alt);
 t("[L-7] Projektname „Projekt ohne Plan“", uebernommen.projekt.name === "Projekt ohne Plan");
 t("[L-7] alle Waende uebernommen", M.alleWaende(uebernommen).length === 2);
-t("[L-7] Namen erhalten", M.findeWand(uebernommen, "w-alt2").wand.name === "Wand B");
+// Seit dem Entscheid vom 03.11.2026 ist der Name erzeugt: die uebernommenen Waende werden
+// in Uebernahmereihenfolge nummeriert (Kuerzel aus „Geschoss 1“ = G1).
+t("[L-7] Waende in Uebernahmereihenfolge nummeriert, Name erzeugt",
+  M.findeWand(uebernommen, "w-alt1").wand.name === "Wand_G1-1"
+  && M.findeWand(uebernommen, "w-alt2").wand.name === "Wand_G1-2");
 t("[L-7] KEINE Lagedaten erfunden",
   M.alleWaende(uebernommen).every((e) => e.wand.lage === null));
 t("[L-7] Ergebnis ist gueltig", M.validiereMappe(uebernommen).length === 0);
@@ -693,6 +701,156 @@ t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
   // Erst ein SPEICHERN schreibt das erweiterte Format — das Lesen allein nie.
   t("#136 Altformat: der Roundtrip der Altdatei ist wieder wertgleich",
     ohneWandtyp(store.projektObjekt(altId).wandelement) === JSON.stringify(JSON.parse(ALT).wandelement));
+}
+
+// --- Wandnummer je Gebaeude, Geschosskuerzel, erzeugter Wandname -------------
+// Entscheid Felix/Tibor 03.11.2026: Name = Wand_<Kuerzel>-<Nr>, Nummer je GEBAEUDE,
+// nie wieder vergeben, nichts rueckt nach; Kuerzel Pflicht, 1–2 Zeichen, eindeutig.
+{
+  // Kuerzelpruefung
+  t("Kuerzel: EG, E1, U1, 7 sind zulaessig",
+    ["EG", "E1", "U1", "7"].every((k) => M.kuerzelFehler(k).length === 0));
+  t("Kuerzel: leer wird als Pflichtfeld benannt",
+    /fehlt.*Pflicht/.test(M.kuerzelFehler("")[0]) && /fehlt/.test(M.kuerzelFehler(null)[0]));
+  t("Kuerzel: drei Zeichen, Sonderzeichen und Umlaute werden benannt abgewiesen",
+    ["EGX", "E-", "Ä", "E G"].every((k) => /unzulässig/.test(M.kuerzelFehler(k)[0] || "")));
+  t("Kuerzel: Kleinschreibung wird nur normalisiert, nicht abgewiesen",
+    M.normKuerzel(" eg ") === "EG" && M.kuerzelFehler("eg").length === 0);
+  t("Kuerzel: doppelt im Gebaeude wird benannt abgewiesen",
+    /schon vergeben/.test(M.kuerzelFehler("EG", ["OG", "EG"])[0]));
+
+  // Vorschlag aus der Bezeichnung (Bestand ohne Kuerzel)
+  const vs = (n, b) => M.kuerzelVorschlag(n, b);
+  t("Kuerzel-Vorschlag: bekannte Muster",
+    vs("EG") === "EG" && vs("Erdgeschoss") === "EG" && vs("OG") === "OG" && vs("DG") === "DG"
+    && vs("Dachgeschoss") === "DG" && vs("UG") === "UG" && vs("Keller") === "KG" && vs("KG") === "KG");
+  t("Kuerzel-Vorschlag: mit einstelliger Zahl Buchstabe + Ziffer",
+    vs("1. OG") === "O1" && vs("2. Obergeschoss") === "O2" && vs("UG 2") === "U2");
+  t("Kuerzel-Vorschlag: sonst Anfangsbuchstabe + Ziffer bzw. die ersten zwei Zeichen",
+    vs("Geschoss 1") === "G1" && vs("Halle") === "HA" && vs("Zwischengeschoss") === "ZW");
+  t("Kuerzel-Vorschlag: belegt wird eindeutig gemacht",
+    vs("EG", ["EG"]) === "E1" && vs("EG", ["EG", "E1"]) === "E2" && vs("Geschoss 1", ["G1"]) === "GE");
+
+  // Mappe mit zwei Geschossen in einem Gebaeude, ein zweites Gebaeude
+  let w = M.leereMappe("Nummern", { geschoss: "Erdgeschoss" });
+  const geb = w.gebaeude[0].id;
+  const eg = w.gebaeude[0].geschosse[0].id;
+  const og = M.fuegeGeschossHinzu(w, geb, "Obergeschoss", 2600, "OG");
+  w = og.mappe;
+  t("Kuerzel: das erste Geschoss traegt sofort sein vorgeschlagenes Kuerzel",
+    M.findeGeschoss(w, eg).geschoss.kuerzel === "EG" && M.findeGeschoss(w, og.id).geschoss.kuerzel === "OG");
+  t("Kuerzel: Anlegen mit doppeltem Kuerzel wird benannt abgewiesen",
+    wirft(() => M.fuegeGeschossHinzu(w, geb, "Noch ein EG", 2600, "EG"), /schon vergeben/));
+  t("Kuerzel: Anlegen mit unzulaessigem Kuerzel wird benannt abgewiesen",
+    wirft(() => M.fuegeGeschossHinzu(w, geb, "DG", 2600, "DGX"), /unzulässig/));
+
+  // Vergabe: neue Waende bekommen die naechste Nummer, je Gebaeude durchgezaehlt
+  w = M.setzeWand(w, eg, { id: "n-1", name: "frei gewaehlt", lage: null });
+  w = M.setzeWand(w, eg, { id: "n-2", lage: null });
+  w = M.setzeWand(w, og.id, { id: "n-3", lage: null });
+  const nr = (m2, id) => M.findeWand(m2, id).wand.nr;
+  const nm = (m2, id) => M.findeWand(m2, id).wand.name;
+  t("Vergabe: 1, 2 im EG und 3 im OG — die Nummer gilt je Gebaeude, nicht je Geschoss",
+    nr(w, "n-1") === 1 && nr(w, "n-2") === 2 && nr(w, "n-3") === 3 && w.gebaeude[0].wand_nr_max === 3);
+  t("Name: immer Wand_<Kuerzel>-<Nr>, ein mitgegebener Name wird nicht uebernommen",
+    nm(w, "n-1") === "Wand_EG-1" && nm(w, "n-3") === "Wand_OG-3" && M.wandName("EG", 12) === "Wand_EG-12");
+  t("Name: freies Umbenennen einer Wand wird benannt abgewiesen",
+    wirft(() => M.benenneUm(w, "n-1", "Treppenhaus"), /nicht frei änderbar/));
+  t("Vergabe: setzeWand mit nachgereichtem Namen aendert Nummer und Namen nicht",
+    nr(M.setzeWand(w, eg, { id: "n-1", name: "anders" }), "n-1") === 1
+    && nm(M.setzeWand(w, eg, { id: "n-1", name: "anders" }), "n-1") === "Wand_EG-1");
+
+  // Loeschen ohne Nachruecken
+  let ohne2 = M.entferneWand(w, "n-2");
+  t("Loeschen: die Nummer 2 bleibt eine Luecke, nichts rueckt nach",
+    nr(ohne2, "n-1") === 1 && nr(ohne2, "n-3") === 3 && ohne2.gebaeude[0].wand_nr_max === 3);
+  ohne2 = M.setzeWand(ohne2, eg, { id: "n-4", lage: null });
+  t("Loeschen: die naechste Wand bekommt 4 — die geloeschte 2 wird nie wieder vergeben",
+    nr(ohne2, "n-4") === 4 && nm(ohne2, "n-4") === "Wand_EG-4");
+  const alles = M.entferneWand(M.entferneWand(M.entferneWand(ohne2, "n-1"), "n-3"), "n-4");
+  t("Loeschen: auch nach dem Loeschen ALLER Waende bleibt der Zaehler stehen",
+    alles.gebaeude[0].wand_nr_max === 4
+    && nr(M.setzeWand(alles, og.id, { id: "n-5", lage: null }), "n-5") === 5);
+
+  // Kopie (die Mappe sieht nur eine neue Kennung) bekommt die naechste Nummer
+  t("Kopie: eine neu eingetragene Kennung bekommt die naechste Nummer",
+    nr(M.setzeWand(ohne2, eg, { id: "n-1-kopie", name: "Wand_EG-1 (Kopie)", lage: null }), "n-1-kopie") === 5
+    && !/Kopie/.test(nm(M.setzeWand(ohne2, eg, { id: "n-1-kopie", lage: null }), "n-1-kopie")));
+
+  // Verschieben
+  const verschoben = M.setzeWand(ohne2, og.id, { id: "n-1" });
+  t("Verschieben ins andere Geschoss desselben Gebaeudes: Nummer bleibt, nur das Kuerzel wechselt",
+    nr(verschoben, "n-1") === 1 && nm(verschoben, "n-1") === "Wand_OG-1"
+    && verschoben.gebaeude[0].wand_nr_max === 4);
+  const geb2 = M.fuegeGebaeudeHinzu(verschoben, "Haus 2");
+  const gs2 = M.fuegeGeschossHinzu(geb2.mappe, geb2.id, "EG", 2600, "EG");
+  const fremd = M.setzeWand(M.setzeWand(gs2.mappe, gs2.id, { id: "h2-1", lage: null }), gs2.id, { id: "n-1" });
+  t("Verschieben in ein anderes Gebaeude: dort die naechste Nummer (Haus 2 zaehlt fuer sich)",
+    nr(fremd, "h2-1") === 1 && nr(fremd, "n-1") === 2 && nm(fremd, "n-1") === "Wand_EG-2"
+    && M.findeGebaeude(fremd, geb).wand_nr_max === 4);
+  t("Kuerzel: dasselbe Kuerzel in einem ANDEREN Gebaeude ist zulaessig",
+    M.validiereMappe(fremd).length === 0);
+
+  // Kuerzel aendern: alle Waende des Geschosses heissen danach anders, Nummern bleiben
+  const k2 = M.setzeGeschossKuerzel(ohne2, eg, "E0");
+  t("Kuerzel aendern: Namen folgen, Nummern bleiben",
+    nm(k2, "n-1") === "Wand_E0-1" && nm(k2, "n-4") === "Wand_E0-4" && nr(k2, "n-4") === 4
+    && nm(k2, "n-3") === "Wand_OG-3");
+  t("Kuerzel aendern: doppelt bzw. leer wird benannt abgewiesen",
+    wirft(() => M.setzeGeschossKuerzel(ohne2, eg, "OG"), /schon vergeben/)
+    && wirft(() => M.setzeGeschossKuerzel(ohne2, eg, ""), /fehlt/));
+
+  // Migration: Bestand ohne Nummern und Kuerzel wird einmal durchnummeriert
+  const roh = {
+    format: "SEMBLA-Projektmappe", version: 2,
+    projekt: { id: "prj-alt", name: "Alt" },
+    gebaeude: [{ id: "geb-alt", name: "Haus", geschosse: [
+      { id: "gs-a", name: "EG", waende: [{ id: "a1", name: "Nord" }, { id: "a2", name: "Süd" }] },
+      { id: "gs-b", name: "1. OG", waende: [{ id: "b1", name: "Ost" }] },
+      { id: "gs-c", name: "Erdgeschoss Anbau", waende: [{ id: "c1", name: "West" }] },
+    ] }],
+  };
+  const mig = M.normMappe(roh);
+  t("Migration: Geschoss fuer Geschoss, Waende in Mappenreihenfolge durchnummeriert",
+    ["a1", "a2", "b1", "c1"].map((id) => nr(mig, id)).join(",") === "1,2,3,4"
+    && mig.gebaeude[0].wand_nr_max === 4);
+  t("Migration: Kuerzel aus der Bezeichnung, im Gebaeude eindeutig gemacht",
+    mig.gebaeude[0].geschosse.map((g) => g.kuerzel).join(",") === "EG,O1,E1");
+  t("Migration: Namen erzeugt, Kennungen unberuehrt",
+    nm(mig, "a1") === "Wand_EG-1" && nm(mig, "b1") === "Wand_O1-3" && nm(mig, "c1") === "Wand_E1-4");
+  t("Migration: idempotent — eine zweite Normalisierung ist wertgleich",
+    JSON.stringify(M.normMappe(mig)) === JSON.stringify(mig));
+  t("Migration: gueltig und weiter Formatversion 2", M.validiereMappe(mig).length === 0 && mig.version === 2);
+
+  // Reparatur: doppelte/fehlende Nummern (etwa aus einer Datei) werden neu vergeben
+  const kaputt = JSON.parse(JSON.stringify(mig));
+  kaputt.gebaeude[0].geschosse[0].waende[1].nr = 1;          // a2 doppelt zu a1
+  kaputt.gebaeude[0].geschosse[1].waende[0].nr = null;       // b1 fehlt
+  kaputt.gebaeude[0].wand_nr_max = 7;                        // Luecken 5…7 gab es schon
+  const rep = M.normMappe(kaputt);
+  t("Reparatur: die gueltige Nummer bleibt, doppelte/fehlende bekommen die naechsten nach dem Zaehler",
+    nr(rep, "a1") === 1 && nr(rep, "a2") === 8 && nr(rep, "b1") === 9 && nr(rep, "c1") === 4
+    && rep.gebaeude[0].wand_nr_max === 9);
+  const unzul = JSON.parse(JSON.stringify(mig));
+  unzul.gebaeude[0].geschosse[1].kuerzel = "OGX";
+  t("Datei mit unzulaessigem Kuerzel wird beim Import benannt abgewiesen",
+    wirft(() => M.parseMappe(JSON.stringify(unzul)), /OGX.*unzulässig/));
+  const dopp = JSON.parse(JSON.stringify(mig));
+  dopp.gebaeude[0].geschosse[1].kuerzel = "EG";
+  t("Datei mit doppeltem Kuerzel im Gebaeude wird beim Import benannt abgewiesen",
+    wirft(() => M.parseMappe(JSON.stringify(dopp)), /EG.*schon vergeben/));
+
+  // Neu berechnen
+  const neu = M.nummeriereWaendeNeu(ohne2, geb);
+  t("Neu berechnen: lueckenlos 1…n in Mappenreihenfolge, Zaehler = n",
+    ["n-1", "n-4", "n-3"].map((id) => nr(neu, id)).join(",") === "1,2,3"
+    && neu.gebaeude[0].wand_nr_max === 3 && nm(neu, "n-4") === "Wand_EG-2");
+  t("Neu berechnen: rein — die Ausgangsmappe bleibt unveraendert",
+    nr(ohne2, "n-4") === 4 && ohne2.gebaeude[0].wand_nr_max === 4);
+  t("Neu berechnen: nur das genannte Gebaeude",
+    M.findeGebaeude(M.nummeriereWaendeNeu(fremd, geb), geb2.id).wand_nr_max === 2
+    && wirft(() => M.nummeriereWaendeNeu(ohne2, "geb-gibtsnicht"), /Unbekanntes Gebäude/));
+  t("naechsteWandNr = Zaehler + 1", M.naechsteWandNr(ohne2, geb) === 5);
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);

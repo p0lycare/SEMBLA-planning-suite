@@ -62,7 +62,7 @@
 import { istVorlagenKatalog, katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag,
          produkt as katalogProdukt, rolle, rollenIds, rollenVonModul, validiereKatalog,
          VORLAGE_FELD, VORLAGE_KATALOG_PFAD, vorlageKatalogId } from "./sembla-katalog.js";
-import { alleGeschosse, alleWaende, bemassungenOhneWand, benenneUm as benenneInMappeUm,
+import { alleGeschosse, alleWaende, bemassungenOhneWand,
          entferneGebaeude as entferneGebaeudeAusMappe,
          entferneGeschoss as entferneGeschossAusMappe,
          entferneWand as entferneWandAusMappe,
@@ -71,6 +71,7 @@ import { alleGeschosse, alleWaende, bemassungenOhneWand, benenneUm as benenneInM
          geschossMengen as mappenGeschossMengen, setzeGeschossMenge as setzeMappenGeschossMenge,
          setzeKatalogRef, setzeKopfdaten as setzeMappenKopfdaten,
          setzePlan, setzePlanAnsicht, setzeWand,
+         nummeriereWaendeNeu as nummeriereMappenWaendeNeu, WANDNAME_FEST,
          uebernehmeElemente, validiereMappe } from "./sembla-projektmappe.js";
 
 const K_ELEM = "sembla:elemente";
@@ -124,8 +125,16 @@ const K_AKTIV_GS = "sembla:aktiv:geschoss";
  *  x_grid × 125) — verlustfrei und idempotent ([L-7]). In der Praxis ist nichts
  *  umzurechnen: das Einzeichnen der Lage war nie umgesetzt, im Bestand ist jede
  *  Lage `null`. Wandelemente, Eingaben, Kataloge und alle aktiven Zeiger bleiben
- *  unangetastet. */
-export const SCHEMA_VERSION = 6;
+ *  unangetastet.
+ *  v7: Wandnamen als eindeutige Wandnummer je Gebaeude (Entscheid 03.11.2026). Jede
+ *  gespeicherte Mappe wird EINMAL durch `normMappe` gefuehrt und so festgeschrieben:
+ *  Geschosse ohne Kuerzel bekommen eines aus ihrer Bezeichnung, Waende ohne Nummer
+ *  werden je Gebaeude durchnummeriert (Geschoss fuer Geschoss, Waende in
+ *  Mappenreihenfolge), der Zaehler `wand_nr_max` steht danach fest. Die Namen der
+ *  eingetragenen Wandelemente werden auf `Wand_<Kuerzel>-<Nr>` gezogen (Eintrag UND
+ *  `wandelement.name`). Kennungen, Lagen, Bemassungen, Eingaben und Zeiger bleiben
+ *  unberuehrt; `MAPPE_VERSION` bleibt 2 (die Felder sind optional). */
+export const SCHEMA_VERSION = 7;
 
 /** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
  *  Bleibt 2: `wandtyp`, `abdichtung` und `brandklasse` (alle am Wandelement, alle
@@ -297,6 +306,7 @@ export function migrieren() {
     if (v < 4) _migriereProjektmappe();
     if (v < 5) _migriereProjekte();
     if (v < 6) _migriereLageMm();
+    if (v < 7) _migriereWandnummern();
     localStorage.setItem(K_VERSION, String(SCHEMA_VERSION));
   }
   return SCHEMA_VERSION;
@@ -391,6 +401,52 @@ function _migriereLageMm() {
   localStorage.setItem(K_PROJEKTE, JSON.stringify(neu));
 }
 
+/**
+ * v7-Migration: Geschosskuerzel und Wandnummern einmal vergeben und festschreiben,
+ * danach die Namen der Wandelemente abgleichen. Idempotent — eine schon nummerierte
+ * Mappe bleibt wertgleich.
+ */
+function _migriereWandnummern() {
+  const roh = _leseProjekteRoh();
+  if (!roh.length) return;
+  const neu = roh.map((m) => mappeObjekt(normMappe(m)));
+  localStorage.setItem(K_PROJEKTE, JSON.stringify(neu));
+  for (const m of neu) _gleicheNamenAb(m, true);
+}
+
+/**
+ * Den erzeugten Wandnamen ([Wand_<Kuerzel>-<Nr>]) aus der Mappe in den Wandspeicher
+ * ziehen — in den Eintrag UND in `wandelement.name`, denn Modul 1 schreibt den Namen
+ * des Wandelements beim Speichern zurueck und Modul 7 zeichnet ihn. `geaendert` bleibt
+ * stehen: ein Namensabgleich ist keine Bearbeitung der Wand.
+ * @param {any} mappe @param {boolean} [still] ohne Benachrichtigung (Migration)
+ */
+function _gleicheNamenAb(mappe, still) {
+  const map = _lesenMap();
+  let dirty = false;
+  for (const { wand } of alleWaende(mappe)) {
+    const e = map[wand.id];
+    if (!e || !wand.name) continue;
+    if (e.name !== wand.name) { e.name = wand.name; dirty = true; }
+    if (e.wandelement && typeof e.wandelement === "object" && e.wandelement.name !== wand.name) {
+      e.wandelement = { ...e.wandelement, name: wand.name };
+      dirty = true;
+    }
+  }
+  if (!dirty) return;
+  if (still) localStorage.setItem(K_ELEM, JSON.stringify(map));
+  else _schreibenMap(map);
+}
+
+/** Der erzeugte Name einer eingetragenen Wand (null = in keinem Projekt eingetragen). */
+function _sollName(wandId) {
+  if (!wandId) return null;
+  try {
+    const ort = wandVerortung(wandId);
+    return ort && ort.wand.name ? ort.wand.name : null;
+  } catch { return null; }
+}
+
 /** Der Katalog des Altstands (Schluessel `sembla:katalog`) — nur fuer die Migration. */
 function _leseAltKatalogRoh() {
   try {
@@ -472,9 +528,15 @@ export function speichere(name, wandelement, id, eingaben) {
   const jetzt = _jetzt();
   const eid = id && map[id] ? id : (id || _neueId());
   const vorher = map[eid];
+  // Eine eingetragene Wand heisst IMMER `Wand_<Kuerzel>-<Nr>` — ein mitgegebener
+  // (etwa veralteter) Name schreibt das nicht zurueck, auch nicht im Wandelement.
+  const soll = id ? _sollName(eid) : null;
+  if (soll && wandelement && typeof wandelement === "object" && wandelement.name !== soll) {
+    wandelement = { ...wandelement, name: soll };
+  }
   map[eid] = {
     id: eid,
-    name: (name || wandelement?.name || "Wandelement").toString(),
+    name: (soll || name || wandelement?.name || "Wandelement").toString(),
     wandelement,
     eingaben: eingaben ? _merge(vorher?.eingaben || {}, eingaben) : (vorher?.eingaben || undefined),
     erstellt: vorher?.erstellt || jetzt,
@@ -536,34 +598,35 @@ export function loesche(id) {
  * hier NICHT verortet und NICHT aktiv gesetzt — sie traegt keinerlei Lage- oder
  * Bemassungsbeziehung der Ausgangswand (die haengen an deren id in der Mappe),
  * und die Ausgangswand bleibt bit-genau unveraendert.
+ *
+ * Den Namen bekommt die Kopie erst mit dem Eintragen in ein Geschoss: dann die
+ * NAECHSTE Wandnummer des Gebaeudes (`Wand_<Kuerzel>-<Nr>`). Ein Zusatz „(Kopie)“
+ * entfaellt; bis dahin traegt sie vorlaeufig den Namen der Quelle.
  * @param {string} id Kennung der Ausgangswand
- * @param {string} [name] Anzeigename der Kopie (Vorgabe: „<Name> (Kopie)“)
+ * @param {string} [name] vorlaeufiger Anzeigename (Vorgabe: der Name der Quelle)
  * @returns {string} die id der Kopie
  */
 export function dupliziere(id, name) {
   const quelle = _lesenMap()[id];
   if (!quelle) throw new Error(`Wandelement „${id}“ gibt es nicht.`);
   const klon = (x) => (x == null ? undefined : JSON.parse(JSON.stringify(x)));
-  return speichere(name || `${quelle.name} (Kopie)`, klon(quelle.wandelement), undefined, klon(quelle.eingaben));
+  return speichere(name || quelle.name, klon(quelle.wandelement), undefined, klon(quelle.eingaben));
 }
 
 /**
- * Wandelement umbenennen. Ist die Wand in der Projektmappe eingetragen, wird der
- * NAME dort mitgefuehrt — er ist nach [L-4] reine Anzeige (die Referenz ist die id),
- * und ein veralteter Name in der Mappendatei waere eine zweite, falsche Wahrheit.
- * Lage und Wandelement bleiben unberuehrt.
+ * Wandelement umbenennen — nur noch fuer eine Wand, die in KEINEM Projekt
+ * eingetragen ist. Eine eingetragene Wand heisst `Wand_<Kuerzel>-<Nr>`; ihr Name ist
+ * nicht frei aenderbar, der Versuch wird benannt abgewiesen und schreibt nichts.
  * @param {string} id @param {string} name
  */
 export function umbenennen(id, name) {
   const map = _lesenMap();
   if (!map[id]) return;
+  const ort = wandVerortung(id);
+  if (ort) throw new Error(WANDNAME_FEST(ort.wand.name));
   map[id].name = (name || map[id].name).toString();
   map[id].geaendert = _jetzt();
   _schreibenMap(map);
-  try {
-    const ort = wandVerortung(id);
-    if (ort) setzeMappe(benenneInMappeUm(ort.mappe, id, map[id].name));
-  } catch { /* Mappe kaputt/fehlend: das Wandelement ist trotzdem umbenannt */ }
 }
 
 // --- Datei-Export / -Import ----------------------------------------------
@@ -1027,17 +1090,59 @@ function _schreibeMappe(mappe) {
  * Mappe setzen/ueberschreiben (anhand ihrer Projekt-Kennung). Ungueltige Mappen
  * werden abgelehnt (Fehler), nie stillschweigend zurechtgebogen ([P-9]). Eine noch
  * unbekannte Mappe wird angehaengt; ist noch kein Projekt aktiv, wird sie es.
- * @param {object} mappe @returns {object} die gespeicherte Mappe
+ *
+ * Der Wandnummern-Zaehler eines Gebaeudes STEIGT NUR: ein aelterer Stand (etwa ein
+ * Rueckgaengig-Schritt im Geschosseditor oder ein ueberschreibender Import) setzt ihn
+ * nicht zurueck — sonst kaeme eine schon ausgegebene Nummer erneut in Umlauf. Allein
+ * `nummeriereWaendeNeu` darf ihn ausdruecklich neu setzen (`opts.zaehlerNeu`).
+ * Danach werden die erzeugten Wandnamen in den Wandspeicher gezogen.
+ * @param {object} mappe @param {{zaehlerNeu?:string}} [opts] Gebaeude-Kennung
+ * @returns {object} die gespeicherte Mappe
  */
-export function setzeMappe(mappe) {
-  const m = normMappe(mappe);
+export function setzeMappe(mappe, opts) {
+  const m = normMappe(_zaehlerAusSpeicher(mappe, opts && opts.zaehlerNeu));
   const fehler = validiereMappe(m);
   if (fehler.length) throw new Error("Projektmappe ungueltig:\n– " + fehler.join("\n– "));
   const neu = !projektMappe(m.projekt.id);
   const gespeichert = _schreibeMappe(m);
   if (neu && !aktivesProjektId()) localStorage.setItem(K_AKTIV_PRJ, m.projekt.id);
+  _gleicheNamenAb(gespeichert, true);
   _benachrichtige();
   return gespeichert;
+}
+
+/**
+ * Den gespeicherten Zaehler je Gebaeude in eine zu schreibende Mappe uebernehmen,
+ * wenn er hoeher ist (rein: liefert eine flache Kopie). VOR der Normalisierung, damit
+ * eine dabei neu vergebene Nummer schon hinter dem gespeicherten Stand liegt.
+ * @param {any} mappe @param {string} [ausser] Gebaeude-Kennung, deren Zaehler neu gesetzt wird
+ */
+function _zaehlerAusSpeicher(mappe, ausser) {
+  if (!mappe || typeof mappe !== "object" || !Array.isArray(mappe.gebaeude)) return mappe;
+  const pid = mappe.projekt && mappe.projekt.id != null ? String(mappe.projekt.id) : null;
+  const roh = pid ? _leseProjekteRoh().find((x) => String(x?.projekt?.id) === pid) : null;
+  if (!roh) return mappe;
+  const gespeichert = new Map((roh.gebaeude || []).map((g) => [String(g?.id), +g?.wand_nr_max || 0]));
+  return {
+    ...mappe,
+    gebaeude: mappe.gebaeude.map((g) => {
+      if (!g || typeof g !== "object" || String(g.id) === String(ausser)) return g;
+      const alt = gespeichert.get(String(g.id)) || 0;
+      return alt > (+g.wand_nr_max || 0) ? { ...g, wand_nr_max: alt } : g;
+    }),
+  };
+}
+
+/**
+ * „Wandnummern neu berechnen“ fuer ein Gebaeude (Modul 0, nach Bestaetigung): alle
+ * Waende lueckenlos neu nummerieren und den Zaehler setzen — die EINZIGE Stelle, an
+ * der der Zaehler sinken darf. Bereits ausgegebene Plaene passen danach nicht mehr.
+ * @param {string} gebaeudeId @returns {object} die gespeicherte Mappe
+ */
+export function nummeriereWaendeNeu(gebaeudeId) {
+  const m = listeProjekte().find((x) => findeGebaeude(x, gebaeudeId));
+  if (!m) throw new Error(`Unbekanntes Gebäude „${gebaeudeId}“.`);
+  return setzeMappe(nummeriereMappenWaendeNeu(m, gebaeudeId), { zaehlerNeu: String(gebaeudeId) });
 }
 
 /**

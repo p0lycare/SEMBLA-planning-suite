@@ -22,7 +22,7 @@ import {
 } from "../../docs/shared/sembla-gesamtstueckliste.js";
 import {
   leereMappe, fuegeGebaeudeHinzu, fuegeGeschossHinzu, setzeWand, setzeKatalogRef,
-  geschossMengen, setzeGeschossMenge, mappeObjekt, validiereMappe,
+  geschossMengen, setzeGeschossMenge, mappeObjekt, validiereMappe, alleWaende, findeWand,
 } from "../../docs/shared/sembla-projektmappe.js";
 import { katalogObjekt, parseKatalog } from "../../docs/shared/sembla-katalog.js";
 // #136 Der kanonische Neuberechnungspfad einer BESTEHENDEN Wand (#120/#130) — genau der Weg,
@@ -91,6 +91,24 @@ M = setzeWand(M, EG, { id: "w-a", name: "Wand A" });
 M = setzeWand(M, EG, { id: "w-b", name: "Wand B" });
 M = setzeWand(M, OG, { id: "w-c", name: "Wand C" });
 M = setzeWand(M, EG2, { id: "w-d", name: "Wand D (2. Gebäude)" });
+
+// Seit dem Entscheid 03.11.2026 heisst jede eingetragene Wand IMMER
+// `Wand_<Geschosskuerzel>-<Nr>` (Nummer je GEBAEUDE, in Mappenreihenfolge) — der beim
+// Eintragen mitgegebene Name wird ueberschrieben. `storage.setzeMappe` zieht den
+// erzeugten Namen in den Wandspeicher (Eintrag UND `wandelement.name`); der Mock bildet
+// genau das nach, damit Wandspeicher und Mappe wie im Betrieb denselben Namen tragen.
+/** Der erzeugte Name einer eingetragenen Wand — aus der Mappe, nie geraten. */
+const NAME = (id, m = M) => findeWand(m, id).wand.name;
+for (const { wand } of alleWaende(M)) {
+  if (ELEMENTE[wand.id]) {
+    ELEMENTE[wand.id].name = wand.name;
+    ELEMENTE[wand.id].wandelement.name = wand.name;
+  }
+}
+ok("Wandnamen: Wand_<Kuerzel>-<Nr>, je Gebaeude ab 1 gezaehlt",
+  NAME("w-a") === "Wand_EG-1" && NAME("w-b") === "Wand_EG-2" && NAME("w-c") === "Wand_OG-3"
+  && NAME("w-d") === "Wand_EG-1" && ELEMENTE["w-a"].name === "Wand_EG-1"
+  && ELEMENTE["w-c"].wandelement.name === "Wand_OG-3");
 
 /** Erwartete Summe einer Wandmenge — genau der bestehende kanonische Pfad. */
 function erwartet(ids) {
@@ -235,7 +253,7 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
       && st[0].label === "Kopplungsmutter Stangenstoß (vorkonfektioniert)"
       && fu[0].label === "Kopplungsmutter Fuß (Bodenblech)";
   })());
-  ok("Herkunftstext nennt Wand und Teilmenge", /Wand A: \d+ · Wand B: \d+/.test(herkunftText(rodStd[0])));
+  ok("Herkunftstext nennt Wand und Teilmenge", /Wand_EG-1: \d+ · Wand_EG-2: \d+/.test(herkunftText(rodStd[0])));
 }
 
 // ---- 5. Lücken: verwaist, ohne Wandelement, nicht ableitbar ------------------------------
@@ -246,8 +264,12 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   const arten = d.luecken.map(l => l.art);
   ok("verwaiste Wand-ID wird als Lücke gemeldet ([L-4])", arten.includes("wand_fehlt"));
   ok("Eintrag ohne Wandelement wird als Lücke gemeldet", arten.includes("kein_wandelement"));
+  // Auch der verwaiste Eintrag traegt den erzeugten Namen (naechste Nummer im Gebaeude:
+  // w-a/w-b/w-c haben 1–3, also 4) — benannt wird er unter genau diesem Namen.
   ok("Lücke nennt Wand und Projektpfad",
-    d.luecken.every(l => l.grund) && d.luecken.some(l => /Projekt #44 › Haus Nord › EG › Verwaiste Wand/.test(l.pfad)));
+    NAME("w-verwaist", ML) === "Wand_EG-4"
+    && d.luecken.every(l => l.grund) && d.luecken.some(l => l.wand === "Wand_EG-4"
+      && /Projekt #44 › Haus Nord › EG › Wand_EG-4$/.test(l.pfad)));
   ok("Ausgabe ist sichtbar unvollständig", !d.vollstaendig && /UNVOLLSTÄNDIG/.test(standText(d)));
   ok("Stand nennt enthaltene und erwartete Wandzahl", /2 von 4 Wänden/.test(standText(d)));
   ok("keine Nullposition und kein Ersatzpreis für die fehlenden Wände",
@@ -297,7 +319,7 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   ok("#81 kein Wandname mehr in einer Positionszeile", (() => {
     const zeilen = mitPreis.slice(mitPreis.indexOf(kopfMit) + 1)
       .filter((z) => z.length > 1 && !String(z[0]).startsWith("Summe netto"));
-    return zeilen.length > 0 && !zeilen.some((z) => z.some((v) => /Wand A|Wand B/.test(String(v))));
+    return zeilen.length > 0 && !zeilen.some((z) => z.some((v) => [NAME("w-a"), NAME("w-b")].some((n) => String(v).includes(n))));
   })());
   ok("#81 EP/GP stehen unmittelbar vor „Produkt (Katalog)“",
     kopfMit.indexOf("GP (EUR)") === kopfMit.indexOf("Produkt (Katalog)") - 1
@@ -340,7 +362,7 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
     /;/.test(csv) && d.positionen.flatMap(p => p.ids).length > 0
     && !d.positionen.flatMap(p => p.ids).some(x => csv.includes(x)));
   ok("Dateirumpf nennt Ebene und Bezug", dateiRumpf(d) === "Gesamtstueckliste_Geschoss_EG"
-    && dateiRumpf(daten("wand", Z)) === "Baustellenstueckliste_Wand_Wand_A"
+    && dateiRumpf(daten("wand", Z)) === "Baustellenstueckliste_Wand_Wand_EG-1"
     && dateiRumpf(daten("projekt", Z)) === "Gesamtstueckliste_Projekt_Projekt_44");
 
   // Unvollständige Datei sagt das ausdrücklich und nennt jede Lücke.
@@ -348,7 +370,8 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   const csvL = gesamtstuecklisteCsv(gesamtDaten(umfang(ML, "geschoss", Z), leser()), { datum: "01.01.2026" });
   ok("unvollständige CSV ist als solche gekennzeichnet", /UNVOLLSTÄNDIG – 2 von 3/.test(csvL));
   ok("unvollständige CSV nennt Lücke mit Pfad und Ursache",
-    /Lücke;Projekt #44 › Haus Nord › EG › Verwaiste Wand;.*verwaister Eintrag/.test(csvL));
+    NAME("w-verwaist", ML) === "Wand_EG-4"
+    && /Lücke;Projekt #44 › Haus Nord › EG › Wand_EG-4;.*verwaister Eintrag/.test(csvL));
   ok("unvollständige CSV erfindet keine Nullzeile", !/;0;;;;;;$/m.test(csvL));
 }
 
@@ -363,7 +386,7 @@ const projektObjekt = (id) => ({
 });
 /** Standard-Parameter des Exports — Klick-Kennungen, nie aktive Zeiger. */
 const P = (ueber = {}) => ({
-  mappe: MK, ebene: "projekt", gebaeudeId: GEB1, geschossId: EG, wandId: "w-a", wandName: "Wand A",
+  mappe: MK, ebene: "projekt", gebaeudeId: GEB1, geschossId: EG, wandId: "w-a", wandName: "Wand_EG-1",
   katalog: KATALOG, ...leser(), projektObjekt, preise: true, ...ueber,
 });
 
@@ -474,12 +497,13 @@ const P = (ueber = {}) => ({
   // massgebliche Bestellunterlage und entsteht auf jeder Ebene.
   ok("#67/#126 Wandebene: Wanddatei + 2 Stuecklisten-CSVs (bitgleich baueDateien) + Einkaufsliste",
     ew.dateien.length === 4
-    && ew.dateien[0].name === wandPfad({ id: "w-a", name: "Wand A" })
+    && ew.dateien[0].name === wandPfad({ id: "w-a", name: "Wand_EG-1" })
     && ew.dateien[1].data === sollW[0].data && ew.dateien[2].data === sollW[1].data
-    && ew.dateien[3].name === "Einkaufsliste_Wand_" + sicherStamm("Wand A") + ".csv"
+    && ew.dateien[3].name === "Einkaufsliste_Wand_" + sicherStamm("Wand_EG-1") + ".csv"
     && /^SEMBLA – Einkaufsliste \(Beschaffung\)/.test(ew.dateien[3].data)
-    && /\nWand;Wand A/.test(ew.dateien[3].data)
-    && ew.zipName === "SEMBLA_Export_Wand_" + sicherStamm("Wand A"));
+    && /\nWand;Wand_EG-1\r?\n/.test(ew.dateien[3].data)
+    && ew.dateien[1].name === "Baustellenstueckliste_Wand_EG-1.csv"
+    && ew.zipName === "SEMBLA_Export_Wand_" + sicherStamm("Wand_EG-1"));
   ok("#67 eine unverortete Wand bleibt ohne Mappe exportierbar", (() => {
     const solo = hierarchieExport(["wand"], P({ ebene: "wand", mappe: null }));
     return solo.dateien.length === 1 && solo.luecken.length === 0;
@@ -495,10 +519,11 @@ const P = (ueber = {}) => ({
   ok("#67 fehlendes Wandelement: Datei fehlt, Luecke nennt Wand und [L-4]",
     ev.dateien.length === 2
     && !ev.dateien.some((x) => x.name.includes("w-verwaist"))
-    && ev.luecken.length === 1 && /Verwaiste Wand/.test(ev.luecken[0]) && /L-4/.test(ev.luecken[0]));
+    && NAME("w-verwaist", ML) === "Wand_EG-4"
+    && ev.luecken.length === 1 && /„Wand_EG-4“/.test(ev.luecken[0]) && /L-4/.test(ev.luecken[0]));
   const eg2 = hierarchieExport(["gesamt"], P({ mappe: ML, ebene: "geschoss" }));
   ok("#67 die Gesamtstueckliste meldet ihre Luecken in den Exportluecken mit",
-    eg2.luecken.some((l) => /Gesamtstückliste/.test(l) && /Verwaiste Wand/.test(l)));
+    eg2.luecken.some((l) => /Gesamtstückliste/.test(l) && /Wand_EG-4/.test(l)));
   const ohneRef = hierarchieExport(["katalog"], P({ mappe: M, katalog: null }));
   ok("#67 kein zugeordneter Katalog: keine Datei, benannter Grund ([L-12])",
     ohneRef.dateien.length === 0 && /kein Bauteilkatalog zugeordnet/.test(ohneRef.luecken[0]));
@@ -630,8 +655,8 @@ const P = (ueber = {}) => ({
     const dAng = gesamtDaten(umfG(), leserM({ [FREMD]: 5 }), { fassung: "angepasst" });
     ok("#81 nicht zuordenbare Übersteuerung wird mit Wandbezug gemeldet",
       dAng.mengen.fremd.length === 1 && dAng.mengen.fremd[0].kennung === FREMD
-      && dAng.mengen.fremd[0].wandId === "w-a" && dAng.mengen.fremd[0].wand === "Wand A"
-      && /Haus Nord › EG › Wand A/.test(dAng.mengen.fremd[0].pfad));
+      && dAng.mengen.fremd[0].wandId === "w-a" && dAng.mengen.fremd[0].wand === "Wand_EG-1"
+      && /Haus Nord › EG › Wand_EG-1$/.test(dAng.mengen.fremd[0].pfad));
     ok("#81 sie wird nicht angewandt — die Mengen bleiben wie ohne sie", (() => {
       const rein = gesamtDaten(umfG(), leserM(), { fassung: "angepasst" });
       return JSON.stringify(dAng.positionen.map((p) => p.menge)) === JSON.stringify(rein.positionen.map((p) => p.menge));
@@ -640,18 +665,18 @@ const P = (ueber = {}) => ({
       dAng.luecken.length === 0 && dAng.vollstaendig === true && /vollständig/.test(standText(dAng)));
     const csv = gesamtstuecklisteCsv(dAng, { datum: "01.01.2026" });
     ok("#81 der Dateikopf nennt sie mit Wand und Kennung",
-      new RegExp("Übersteuerung nicht zuordenbar;Wand A;" + FREMD + ";").test(csv));
+      new RegExp("Übersteuerung nicht zuordenbar;Wand_EG-1;" + FREMD + ";").test(csv));
     ok("#81 vor dem Download wird sie als Lücke mit Wandbezug benannt", (() => {
       const l = gesamtMengenLuecken(dAng);
-      return l.length === 1 && /Gesamtstückliste, „Wand A“/.test(l[0]) && /nicht angewandt/.test(l[0]);
+      return l.length === 1 && /Gesamtstückliste, „Wand_EG-1“/.test(l[0]) && /nicht angewandt/.test(l[0]);
     })());
     // Unzulässiger Wert: benannt, nie gerundet, nie gelöscht.
     const dBad = gesamtDaten(umfG(), leserM({ [KENN]: 2.5 }), { fassung: "angepasst" });
     ok("#81 unzulässig gespeicherter Wert: benannt mit Wandbezug, es gilt die berechnete Menge",
-      dBad.mengen.ungueltig.length === 1 && dBad.mengen.ungueltig[0].wand === "Wand A"
+      dBad.mengen.ungueltig.length === 1 && dBad.mengen.ungueltig[0].wand === "Wand_EG-1"
       && dBad.mengen.ungueltig[0].kennung === KENN && zeileI3(dBad).menge === 2 * BER);
     ok("#81 der Dateikopf nennt auch den unzulässigen Wert",
-      /Übersteuerung unzulässig;Wand A;/.test(gesamtstuecklisteCsv(dBad, { datum: "01.01.2026" })));
+      /Übersteuerung unzulässig;Wand_EG-1;/.test(gesamtstuecklisteCsv(dBad, { datum: "01.01.2026" })));
   }
 
   // (e) Ein Exportlauf, EINE Fassung — für Wand- und Gesamtstückliste (Muss 5).
@@ -690,7 +715,7 @@ const P = (ueber = {}) => ({
       const mitFremd = hierarchieExport(["gesamt"], P({
         ...leserM({ [FREMD]: 5 }), ebene: "geschoss", fassung: "angepasst",
       }));
-      return mitFremd.luecken.some((l) => /Gesamtstückliste, „Wand A“/.test(l) && l.includes(FREMD));
+      return mitFremd.luecken.some((l) => /Gesamtstückliste, „Wand_EG-1“/.test(l) && l.includes(FREMD));
     })());
     ok("#81 in der berechneten Fassung wird nichts als Lücke gemeldet, was nicht wirkt", (() => {
       const berFremd = hierarchieExport(["gesamt"], P({ ...leserM({ [FREMD]: 5 }), ebene: "geschoss" }));
@@ -1438,11 +1463,17 @@ const P = (ueber = {}) => ({
   const wandZeilen = koerper.filter((r) => r[3] !== "");
   const zwischen = koerper.filter((r) => String(r[2]).startsWith(MATRIX_ZWISCHENSUMME));
   const gesamtZeile = koerper[koerper.length - 1];
-  ok("#132 je Wand eine Zeile mit Geschoss, Name und Lageplan-Nummer, in Mappenreihenfolge",
-    wandZeilen.map((r) => r[2]).join() === "Wand A,Wand B,Wand C,Wand D (2. Gebäude)"
+  ok("#132 je Wand eine Zeile mit Geschoss und Name, in Mappenreihenfolge",
+    wandZeilen.map((r) => r[2]).join() === "Wand_EG-1,Wand_EG-2,Wand_OG-3,Wand_EG-1"
     && wandZeilen.map((r) => r[1]).join() === "EG,EG,OG,EG Süd"
-    && wandZeilen.map((r) => r[0]).join() === "Haus Nord,Haus Nord,Haus Nord,Haus Süd"
-    && wandZeilen.map((r) => r[3]).join() === "1,2,1,1");
+    && wandZeilen.map((r) => r[0]).join() === "Haus Nord,Haus Nord,Haus Nord,Haus Süd");
+  // „Nr. (Lageplan)“ ist die Nummer, die die Blase im Lageplan zeigt — seit dem Entscheid
+  // 03.11.2026 die Wandnummer `wand.nr` je GEBAEUDE (nicht mehr die laufende Nummer je
+  // Geschoss). Erwartet wird sie aus der Mappe, nicht hart gezaehlt.
+  ok("#132 die Lageplan-Nummer jeder Wandzeile ist ihre Wandnummer aus der Mappe",
+    wandZeilen.map((r) => r[3]).join()
+      === ["w-a", "w-b", "w-c", "w-d"].map((id) => findeWand(M, id).wand.nr).join()
+    && wandZeilen.map((r) => r[3]).join() === "1,2,3,1");
   ok("#132 nach jedem Geschoss eine klar benannte Zwischensumme, am Ende die Gesamtsumme",
     zwischen.length === 3
     && zwischen.map((r) => r[2]).join("|") === `${MATRIX_ZWISCHENSUMME} „EG“|${MATRIX_ZWISCHENSUMME} „OG“|${MATRIX_ZWISCHENSUMME} „EG Süd“`
@@ -1493,7 +1524,7 @@ const P = (ueber = {}) => ({
   const dL = gesamtDaten(umfang(ML, "projekt", Z), leser());
   const aoaL = matrixStuecklisteAoa(dL, { datum: "01.01.2026" });
   const kL = aoaL.findIndex((r) => r[0] === MATRIX_KOPFSPALTEN[0]);
-  const zeileL = aoaL.slice(kL + 1).find((r) => r[2] === "Verwaiste Wand");
+  const zeileL = aoaL.slice(kL + 1).find((r) => r[2] === NAME("w-verwaist", ML));
   const zwEGL = aoaL.slice(kL + 1).find((r) => String(r[2]) === `${MATRIX_ZWISCHENSUMME} „EG“`);
   const aoaOhne = matrixStuecklisteAoa(daten("projekt", Z), { datum: "01.01.2026" });
   const zwEG = aoaOhne.slice(aoaOhne.findIndex((r) => r[0] === MATRIX_KOPFSPALTEN[0]) + 1)
@@ -1501,7 +1532,8 @@ const P = (ueber = {}) => ({
   ok("#132 fehlende Wandstückliste: benannte LÜCKE-Zeile mit leeren Zellen, Lücke im Kopf",
     !!zeileL && String(zeileL[4]).startsWith("LÜCKE – ")
     && zeileL.slice(nLead).every((v) => v === "")
-    && aoaL.some((r) => r[0] === "Lücke" && /Verwaiste Wand/.test(String(r[1])))
+    && NAME("w-verwaist", ML) === "Wand_EG-4"
+    && aoaL.some((r) => r[0] === "Lücke" && /› Wand_EG-4$/.test(String(r[1])))
     && /UNVOLLSTÄNDIG/.test(matrixStuecklisteCsv(dL, { datum: "01.01.2026" })));
   ok("#132 die Lücke geht NICHT als Null in die Zwischensumme ein",
     !!zwEGL && !!zwEG && JSON.stringify(zwEGL.slice(nLead)) === JSON.stringify(zwEG.slice(nLead)));

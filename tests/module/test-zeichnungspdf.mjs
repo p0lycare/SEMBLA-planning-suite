@@ -102,8 +102,12 @@ ok("Lageplan zuerst, danach je Wand genau ein Blatt",
   && egA.seiten[1].art === "wand" && egA.seiten[2].art === "wand");
 ok("#107 die Wandfolge ist die alphabetische Namensfolge",
   /Wand A/.test(egA.seiten[1].titel) && /Wand B/.test(egA.seiten[2].titel));
+// Benannt wird mit dem Wandnamen der Mappe (`Wand_<Kuerzel>-<Nr>`, Entscheid 03.11.2026) —
+// der mitgegebene Name „Wand ohne Element" ist in `normMappe` ueberschrieben.
+const NAME_WEG = MAPPE.findeWand(m, "w-weg").wand.name;
 ok("[L-4] der verwaiste Eintrag wird namentlich benannt und uebersprungen",
-  egA.luecken.length === 1 && /Wand ohne Element/.test(egA.luecken[0])
+  NAME_WEG === "Wand_EG-3"
+  && egA.luecken.length === 1 && egA.luecken[0].includes(`„${NAME_WEG}“`)
   && /verwaister Eintrag/.test(egA.luecken[0]) && /L-4/.test(egA.luecken[0]));
 
 const ogA = PDF.blaetterFuerGeschoss({ mappe: m, geschossId: gsA_OG, elemente: ELEMENTE, leseEingaben });
@@ -122,32 +126,45 @@ ok("ein unbekanntes Geschoss wird benannt statt geraten",
 const lageS = (y) => ({ start_mm: { x: 0, y }, richtung: "x", laenge_grid: 8 });
 const elS = (id, name) => ({ id, name, wandelement: buildWall(name, 1000, 2600, []) });
 
+// Seit dem Entscheid vom 03.11.2026 ist der Mappenname IMMER `Wand_<Kuerzel>-<Nr>` mit
+// der FESTEN Wandnummer je Gebaeude. Damit Mappenfolge und Namensfolge auseinander-
+// fallen (sonst waere die Sortierung nicht nachweisbar), werden die Nummern hier
+// ausdruecklich gesetzt (`setzeWand(…, {nr})`) — so, wie sie nach Loeschen und
+// Verschieben im Bestand auch entstehen. Die mitgegebenen Namen ueberschreibt die Mappe.
 let s = MAPPE.leereMappe("Sortierprojekt", { gebaeude: "Haus S", geschoss: "EG", hoehe_mm: 2600 });
 const gsS_EG = s.gebaeude[0].geschosse[0].id;
-// Mappenreihenfolge C, A, B — plus ein verwaister Eintrag ([L-4]), der auch unter
-// der Sortierung genau seine Meldung bekommt und kein Blatt.
-s = MAPPE.setzeWand(s, gsS_EG, { id: "s-c", name: "Wand C", lage: lageS(62.5) });
-s = MAPPE.setzeWand(s, gsS_EG, { id: "s-a", name: "Wand A", lage: lageS(1062.5) });
-s = MAPPE.setzeWand(s, gsS_EG, { id: "s-b", name: "Wand B", lage: lageS(2062.5) });
-s = MAPPE.setzeWand(s, gsS_EG, { id: "s-weg", name: "Wand ohne Element", lage: null });
+// Mappenreihenfolge C (Wand_EG-6), A (Wand_EG-3), B (Wand_EG-4) — plus ein verwaister
+// Eintrag ([L-4]), der auch unter der Sortierung genau seine Meldung bekommt und kein Blatt.
+s = MAPPE.setzeWand(s, gsS_EG, { id: "s-c", name: "Wand C", nr: 6, lage: lageS(62.5) });
+s = MAPPE.setzeWand(s, gsS_EG, { id: "s-a", name: "Wand A", nr: 3, lage: lageS(1062.5) });
+s = MAPPE.setzeWand(s, gsS_EG, { id: "s-b", name: "Wand B", nr: 4, lage: lageS(2062.5) });
+s = MAPPE.setzeWand(s, gsS_EG, { id: "s-weg", name: "Wand ohne Element", nr: 7, lage: null });
 
-// Zweites Geschoss: zwei Waende mit IDENTISCHEM Mappennamen. Sortiert wird nach dem
-// Mappennamen, sichtbar wird die Folge am Blatt-Titel — der kommt aus dem
-// Wandelement, deshalb tragen die beiden dort unterscheidbare Namen.
+// Zweites Geschoss: zwei Waende mit IDENTISCHEM mitgegebenem Namen. Gleiche Mappennamen
+// gibt es seit dem Entscheid nicht mehr (die Nummer ist je Gebaeude eindeutig) — die
+// Mappe vergibt Wand_OG-8 und Wand_OG-9. Sichtbar wird die Folge am Blatt-Titel, der
+// aus dem Wandelement kommt; deshalb tragen die beiden dort unterscheidbare Namen.
 const zweitS = MAPPE.fuegeGeschossHinzu(s, s.gebaeude[0].id, "OG", 2600);
 s = zweitS.mappe;
 const gsS_OG = zweitS.id;
 s = MAPPE.setzeWand(s, gsS_OG, { id: "s-d1", name: "Wand D", lage: lageS(62.5) });
 s = MAPPE.setzeWand(s, gsS_OG, { id: "s-d2", name: "Wand D", lage: lageS(1062.5) });
 
-// Drittes Geschoss: ein Eintrag OHNE Namen und die Gegenprobe zur natuerlichen
-// Sortierung („Wand 10" vor „Wand 2" — genau der Entscheid zu #107).
+// Drittes Geschoss: ein Eintrag OHNE mitgegebenen Namen und die Gegenprobe zur
+// natuerlichen Sortierung („Wand_UG-10" vor „Wand_UG-2" — genau der Entscheid zu #107).
 const drittS = MAPPE.fuegeGeschossHinzu(s, s.gebaeude[0].id, "UG", 2600);
 s = drittS.mappe;
 const gsS_UG = drittS.id;
-s = MAPPE.setzeWand(s, gsS_UG, { id: "s-2", name: "Wand 2", lage: lageS(62.5) });
-s = MAPPE.setzeWand(s, gsS_UG, { id: "s-leer", name: "", lage: lageS(1062.5) });
-s = MAPPE.setzeWand(s, gsS_UG, { id: "s-10", name: "Wand 10", lage: lageS(2062.5) });
+s = MAPPE.setzeWand(s, gsS_UG, { id: "s-2", name: "Wand 2", nr: 2, lage: lageS(62.5) });
+s = MAPPE.setzeWand(s, gsS_UG, { id: "s-leer", name: "", nr: 1, lage: lageS(1062.5) });
+s = MAPPE.setzeWand(s, gsS_UG, { id: "s-10", name: "Wand 10", nr: 10, lage: lageS(2062.5) });
+/** Der Mappenname einer Wand des Sortierprojekts. */
+const nameS = (id) => MAPPE.findeWand(s, id).wand.name;
+ok("#107 Pruefaufbau: die Mappennamen sind die festen Wandnamen — Mappenfolge ≠ Namensfolge",
+  MAPPE.findeGeschoss(s, gsS_EG).geschoss.waende.map((w) => w.name).join(",")
+    === "Wand_EG-6,Wand_EG-3,Wand_EG-4,Wand_EG-7"
+  && ["s-d1", "s-d2"].map(nameS).join(",") === "Wand_OG-8,Wand_OG-9"
+  && ["s-2", "s-leer", "s-10"].map(nameS).join(",") === "Wand_UG-2,Wand_UG-1,Wand_UG-10");
 
 const ELEMENTE_S = [
   elS("s-c", "Wand C"), elS("s-a", "Wand A"), elS("s-b", "Wand B"),
@@ -166,39 +183,47 @@ ok("#107 Mappenfolge C, A, B liefert Lageplan, dann Wand A, Wand B, Wand C",
   && /Wand A/.test(wandTitel(sortEG)[0]) && /Wand B/.test(wandTitel(sortEG)[1])
   && /Wand C/.test(wandTitel(sortEG)[2]));
 ok("[L-4] der verwaiste Eintrag behaelt unter der Sortierung genau seine Meldung",
-  sortEG.luecken.length === 1 && /Wand ohne Element/.test(sortEG.luecken[0])
+  sortEG.luecken.length === 1 && sortEG.luecken[0].includes(`„${nameS("s-weg")}“`)
   && /verwaister Eintrag/.test(sortEG.luecken[0]) && /L-4/.test(sortEG.luecken[0])
   && !wandTitel(sortEG).some((t) => /ohne Element/.test(t)));
 
 const sortOG = PDF.blaetterFuerGeschoss({ mappe: s, geschossId: gsS_OG,
   elemente: ELEMENTE_S, leseEingaben });
-ok("#107 zwei gleichnamige Waende behalten ihre Mappenreihenfolge (stabil)",
-  wandTitel(sortOG).length === 2 && /Wand D zuerst/.test(wandTitel(sortOG)[0])
+// Gleichnamig koennen zwei eingetragene Waende seit dem 03.11.2026 nicht mehr sein —
+// der identisch mitgegebene Name wird zu zwei verschiedenen festen Wandnamen; die
+// Folge ist deren Namensfolge (hier zugleich die Mappenfolge).
+ok("#107 zwei gleich mitgegebene Namen werden eindeutig — die Folge bleibt die Namensfolge",
+  nameS("s-d1") !== nameS("s-d2")
+  && wandTitel(sortOG).length === 2 && /Wand D zuerst/.test(wandTitel(sortOG)[0])
   && /Wand D danach/.test(wandTitel(sortOG)[1]));
 
 const sortUG = PDF.blaetterFuerGeschoss({ mappe: s, geschossId: gsS_UG,
   elemente: ELEMENTE_S, leseEingaben });
-ok("#107 ein Eintrag ohne Namen wird einsortiert und faellt nicht heraus",
-  wandTitel(sortUG).length === 3 && /Ohne Namen/.test(wandTitel(sortUG)[0])
+ok("#107 ein ohne Namen angelegter Eintrag bekommt seinen Wandnamen und faellt nicht heraus",
+  nameS("s-leer") === "Wand_UG-1"
+  && wandTitel(sortUG).length === 3 && /Ohne Namen/.test(wandTitel(sortUG)[0])
   && !sortUG.luecken.length);
-ok("#107 Gegenprobe: als Zeichenkette sortiert steht „Wand 10\" VOR „Wand 2\"",
+ok("#107 Gegenprobe: als Zeichenkette sortiert steht „Wand_UG-10\" VOR „Wand_UG-2\"",
   /Wand 10/.test(wandTitel(sortUG)[1]) && /Wand 2/.test(wandTitel(sortUG)[2]));
 
 // Die Sortierung ist AUSSCHLIESSLICH die Ausgabefolge: der Lageplan bekommt die
-// unsortierte Mappe, seine Nummernblasen und Wandtabelle bleiben wertgleich
-// (Modul 9 unberuehrt) — und `gs.waende` selbst wird nicht umgestellt.
+// unsortierte Mappe, seine Nummernblasen tragen die FESTE Wandnummer (Entscheid
+// 03.11.2026, die Wandtabelle ist entfallen) — und `gs.waende` selbst wird nicht
+// umgestellt. Weder Mappen- noch Sortierfolge aendern eine Nummer.
 const lpS = LP.lageplanDaten({ mappe: s, geschossId: gsS_EG, elemente: ELEMENTE_S });
-ok("#107 die Lageplan-Nummerierung folgt weiter der Mappenreihenfolge",
+ok("#107 der Lageplan zeigt in Mappenfolge die festen Wandnummern — nichts wird umnummeriert",
   lpS.waende.map((w) => `${w.nr}:${w.name}`).join("|")
-  === "1:Wand C|2:Wand A|3:Wand B|4:Wand ohne Element");
+  === "6:Wand_EG-6|3:Wand_EG-3|4:Wand_EG-4|7:Wand_EG-7"
+  && sortEG.seiten[0].inhalt.includes(LP.lageplanSvg(lpS, LP.normOptionen({ format: "a3" })).inner));
 ok("#107 die gespeicherte Reihenfolge der Projektmappe bleibt unberuehrt",
   MAPPE.findeGeschoss(s, gsS_EG).geschoss.waende.map((w) => w.id).join(",")
   === "s-c,s-a,s-b,s-weg");
 const lpM = LP.lageplanDaten({ mappe: m, geschossId: gsA_EG, elemente: ELEMENTE,
   hintergrund: HINTERGRUND });
-ok("#107 auch im Pruefgeschoss ist die Lageplan-Nummerierung wertgleich zum Altstand",
+ok("#107 auch im Pruefgeschoss traegt der Lageplan die festen Wandnummern der Mappe",
   lpM.waende.map((w) => `${w.nr}:${w.name}`).join("|")
-  === "1:Wand A|2:Wand B|3:Wand ohne Element");
+  === "1:Wand_EG-1|2:Wand_EG-2|3:Wand_EG-3"
+  && lpM.waende.every((w) => w.nr === MAPPE.findeWand(m, w.id).wand.nr));
 
 // --- 2) Es ist die KANONISCHE Zeichnung, nicht eine zweite ----------------
 // Der Vergleich ist byteweise: waere hier eine eigene Zeichenlogik entstanden, wichen
@@ -225,9 +250,16 @@ ok("das vollstaendige Blatt reist mit — Zeichnung, Stueckliste, Vorspannung, L
   /Baustellenst\u00fcckliste \(Mengen\)/.test(wSvg) && /Vorspannung/.test(wSvg)
   && /Darstellung/.test(wSvg) && /Ma\u00dfstab/.test(wSvg) && /Einheit/.test(wSvg)
   && /Spannachsen/.test(wSvg) && /<svg /.test(wSvg));
-ok("der Lageplan traegt Wandtabelle, Legende, Planhintergrundangabe und Schriftfeld",
-  /W\u00e4nde im Geschoss/.test(lpSvg) && /Darstellung/.test(lpSvg)
+// Die Wandtabelle „Wände im Geschoss" ist mit dem Entscheid vom 03.11.2026 ersatzlos
+// entfallen — die Blase traegt die feste Wandnummer, die Legende erklaert sie mit
+// DEMSELBEN Wortlaut wie Modul 9 (`NUMMERNBLASE_TEXT`).
+ok("der Lageplan traegt Legende, Planhintergrundangabe und Schriftfeld — keine Wandtabelle",
+  !/W\u00e4nde im Geschoss/.test(lpSvg) && /Darstellung/.test(lpSvg)
   && /Planhintergrund/.test(lpSvg) && /Plan Nr\./.test(lpSvg) && /Geschoss/.test(lpSvg));
+ok("die Legende des Lageplan-PDF erklaert die Nummernblase mit dem Wortlaut von Modul 9",
+  PDF.legendeLageplan().some((e) => e.form === "kuerzel" && e.text === LP.NUMMERNBLASE_TEXT)
+  && /feste Wandnummer/.test(lpSvg)
+  && !PDF.legendeLageplan().some((e) => /W\u00e4nde im Geschoss/.test(e.text)));
 
 // --- 2b) Selbstgenuegsam: das ist der Kern von #98/#107 -------------------
 // Gepruefte Invariante an der Zeichenkette, die TATSAECHLICH gerastert wird — nicht am
@@ -477,7 +509,7 @@ ok("Umlaute werden uebertragen statt getilgt",
   PDF.sicherStamm("Gebäude Süd/Groß") === "Gebaeude_Sued_Gross");
 ok("der ZIP-Name nennt das Projekt", plan.zipName === "SEMBLA_Zeichnungen_Pruefprojekt");
 ok("die Luecke des verwaisten Eintrags steht im Projektergebnis",
-  plan.luecken.length === 1 && /Wand ohne Element/.test(plan.luecken[0])
+  plan.luecken.length === 1 && plan.luecken[0].includes(`„${NAME_WEG}“`)
   && /Haus A/.test(plan.luecken[0]));
 
 // --- 5) Echte PDF-Struktur (deterministisch, ohne Browser) ---------------

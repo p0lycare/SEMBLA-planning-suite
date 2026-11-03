@@ -1532,7 +1532,7 @@ ok('#50 es gibt genau EINEN Weg nach Modul 1 — kein zweiter Navigationspfad',
 
 // --- 26) Kein Schema-/Formatbump (reine Bedienung) ------------------------
 ok('#50 Projektmappen- und Schemaversion bleiben unveraendert',
-  MAPPE.MAPPE_VERSION === 2 && store.SCHEMA_VERSION === 6
+  MAPPE.MAPPE_VERSION === 2 && store.SCHEMA_VERSION === 7
   && MAPPE.validiereMappe(store.holeMappe()).length === 0);
 
 // ==========================================================================
@@ -1914,7 +1914,7 @@ for (const taste of ['Delete', 'Backspace']) {
 
 // --- 39) Kein Bump, ein Schreibweg, kein zweites Massmodell --------------
 ok('#51 `linie_mm` ist ein optionales Darstellungsfeld der VORHANDENEN Bemassung',
-  MAPPE.MAPPE_VERSION === 2 && store.SCHEMA_VERSION === 6
+  MAPPE.MAPPE_VERSION === 2 && store.SCHEMA_VERSION === 7
   && MAPPE.validiereMappe(store.holeMappe()).length === 0
   && CON.normBemassung({ id: 'x', achse: 'x', von: null, bis: { wand: 'a', bezug: 'min' },
                          mass_mm: 10 }).linie_mm === null
@@ -2834,15 +2834,21 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   // Mass A–B, ihre gespeicherte Rohlage ist deshalb nicht zwangslaeufig die
   // gezeichnete ([K-3]-Fassung C4b(c)). Der Test liest dieselbe Quelle wie der Editor.
   const posA74 = GP.loesen().positionen[idA74];
+  // Wandnummer (Entscheid 03.11.2026): die Kopie bekommt die NAECHSTE Nummer des Gebaeudes.
+  const ort74 = MAPPE.findeGeschoss(store.holeMappe(), gs74);
+  const kopieName74 = MAPPE.wandName(ort74.geschoss.kuerzel, ort74.gebaeude.wand_nr_max + 1);
   $('gp-dupl').dispatch('click');
   await warte();
   const kopie74 = store.listeElemente().find(e => !idsVor74.has(e.id)) || null;
   const kopieEintrag = kopie74 ? MAPPE.findeWand(store.holeMappe(), kopie74.id) : null;
-  ok('#74 Duplizieren legt GENAU EINE Kopie mit neuer id und unterscheidbarem Namen an',
-    !!kopie74 && kopie74.id !== idA74 && kopie74.name === `${nameA74} (Kopie)`
+  ok('#74 Duplizieren legt GENAU EINE Kopie mit neuer id und der naechsten Wandnummer an (kein „(Kopie)“)',
+    !!kopie74 && kopie74.id !== idA74 && kopie74.name === kopieName74 && kopie74.name !== nameA74
+    && !/Kopie/.test(kopie74.name) && kopieEintrag?.wand.nr === ort74.gebaeude.wand_nr_max + 1
     && store.listeElemente().length === idsVor74.size + 1);
-  ok('#74 die Kopie traegt Wandelement UND Eingaben der Ausgangswand',
-    !!kopie74 && JSON.stringify(kopie74.wandelement) === JSON.stringify(store.holeElement(idA74).wandelement)
+  ok('#74 die Kopie traegt Wandelement UND Eingaben der Ausgangswand (nur der Name ist ihr eigener)',
+    !!kopie74 && JSON.stringify({ ...kopie74.wandelement, name: null })
+      === JSON.stringify({ ...store.holeElement(idA74).wandelement, name: null })
+    && kopie74.wandelement.name === kopieName74
     && kopie74.eingaben?.statik?.merkmal === 'original');
   ok('#74/#88 die Kopie steht im aktiven Geschoss — verortet 250 mm quer neben dem Original, '
     + 'ohne kopierte Masse',
@@ -3085,7 +3091,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
 
   // (g) Must-not — kein neues gespeichertes Feld, kein Versionssprung.
   ok('#88 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
   ok('#88 (must-not) die Initialposition steht als gewoehnliche Lage in der Mappe — kein Zusatzfeld',
     !/initial|kopie_versatz|dupl/i.test(localStorage.getItem('sembla:projekte')));
@@ -3501,7 +3507,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
   // Der Bauteilkatalog ist von #111 gar nicht beruehrt — weder Format noch Speicher.
   ok('#111 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2);
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2);
   ok('#111 (must-not) bei weniger als zwei ausgewaehlten Waenden geht das Popup zu',
     (() => {
       $('gp-sammel-knopf').dispatch('click');
@@ -3902,7 +3908,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     ok('#111 (Nicht-Ziel 5) kein neues gespeichertes Feld — die Auswahl steht nur in `eingaben`',
       !/sammelRollen|sammelOptFuer/.test(localStorage.getItem('sembla:elemente') || '')
       && !/produkte/.test(localStorage.getItem('sembla:projekte') || '')
-      && store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+      && store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2
       && store.PROJEKT_VERSION === 2 && MAPPE.validiereMappe(store.holeMappe()).length === 0);
   }
   globalThis.confirm = confirmEcht111;
@@ -4351,7 +4357,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && /setze: \(neu, v\) => \{ neu\.brandklasse = v; \}/.test(html)
     && /store\.normBrandklasse\(/.test(html));
   ok('#79 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
 
   // (g) Realer Nutzerpfad zu Ende gedacht: der in Modul 1 gesetzte Wert ueberlebt
@@ -4515,7 +4521,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     (html.match(/interlocks:/g) || []).length === 1
     && /interlocks: \(we\.interlocks \|\| \[\]\)\.map/.test(html));
   ok('#83 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
 }
 
@@ -4746,7 +4752,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     // Die Startparitaet wird hier nirgends ausgewertet — sie gehoert dem Kern ([K-13.1]).
     && !/start_parity\s*(?:===|!==|==|<|>)/.test(html));
   ok('#90 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
 }
 
@@ -4931,7 +4937,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && (html.match(/function trefferListe/g) || []).length === 1
     && /function treffer\(p\)\{?[\s\S]{0,120}trefferListe\(p\)/.test(html));
   ok('#88 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
 }
 
@@ -5293,7 +5299,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     + 'Katalog- oder Projektformatsprung',
     !/vorspannEingaenge/.test(localStorage.getItem('sembla:elemente') || '')
     && !/vorspannEingaenge/.test(localStorage.getItem('sembla:projekte') || '')
-    && store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    && store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2
     && store.PROJEKT_VERSION === 2 && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
   globalThis.confirm = confirmEcht117;
@@ -5518,7 +5524,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && /sw != null \? \{ kupplung_sw_mm: sw \} : \{\}/.test(waSrc));
   ok('#97 (must-not 2) kein neues gespeichertes Feld, kein Schema-, Mappen-, Katalog- '
     + 'oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2
     && store.PROJEKT_VERSION === 2
     && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
@@ -5800,7 +5806,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && /spannplatte: \(eing, kat, topConn\) => \{/.test(waSrc));
   ok('#97/spm (must-not 2) kein neues gespeichertes Feld, kein Schema-, Mappen-, Katalog- '
     + 'oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2
     && store.PROJEKT_VERSION === 2
     && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
@@ -6115,7 +6121,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && /const d = topConn === "blech"/.test(waSrc));
   ok('#97/spb (must-not 6) kein neues gespeichertes Feld, kein Schema-, Mappen-, '
     + 'Katalog- oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2
     && store.PROJEKT_VERSION === 2
     && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
@@ -6497,7 +6503,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && /spannplatte: \(eing, kat, topConn\) => \{/.test(waSrc));
   ok('#97/zpm (must-not 6) kein neues gespeichertes Feld, kein Schema-, Mappen-, '
     + 'Katalog- oder Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2
     && store.PROJEKT_VERSION === 2
     && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
@@ -6747,7 +6753,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && (we136(a136).courses || []).filter(c => c.ausgleich === true).length === 1);
   ok('#136 (must-not 3) kein neues gespeichertes Feld, kein Schema-, Mappen- oder '
     + 'Projektformatsprung',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
   ok('#136 (must-not 1) der Editor rechnet die Zerlegung nicht selbst — die Ausgleichslage '
     + 'reist als EINGANG durch denselben einen Engine-Pfad',
@@ -6976,6 +6982,10 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   const a139 = lege139('A139', 2600, [400, 1200]);
   const b139 = lege139('B139', 2600, [600]);
   const c139 = lege139('C139', 1800, [400, 1400]);
+  // Die Namen sind seit dem Entscheid vom 03.11.2026 erzeugt (Wand_<Kuerzel>-<Nr>);
+  // gemeldet wird also der erzeugte Name, nicht der beim Speichern mitgegebene.
+  const nameA139 = store.holeElement(a139).name, nameC139 = store.holeElement(c139).name;
+  const reNam = (n) => n.replace(/[-_]/g, '\\$&');
   await warte();
   GP.render();
 
@@ -7046,7 +7056,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#139 (Muss 7, Akzeptanz 3) eine bei einer Wand fehlende Ziel-Lage bricht die GANZE '
     + 'Sammelaenderung benannt ab — nichts ist geschrieben, nichts gebucht',
     /nicht möglich/.test($('gp-msg').textContent)
-    && /C139/.test($('gp-msg').textContent) && /Lage 10/.test($('gp-msg').textContent)
+    && new RegExp(reNam(nameC139)).test($('gp-msg').textContent) && /Lage 10/.test($('gp-msg').textContent)
     && alleDaten139() === vorFehl139 && GP.undoStand.undo === undoVor139);
   // … und ein Ziel, das mit einem vorhandenen Punkt derselben Wand zusammenfaellt.
   blech139(2, 'ziel', 2);
@@ -7055,7 +7065,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#139 (Muss 7, Akzeptanz 3) ein doppelter Punkt wird benannt abgewiesen statt still '
     + 'zusammengefuehrt — alle Waende bleiben unveraendert',
     /nicht möglich/.test($('gp-msg').textContent)
-    && /A139|C139/.test($('gp-msg').textContent)
+    && new RegExp(reNam(nameA139) + '|' + reNam(nameC139)).test($('gp-msg').textContent)
     && /derselben Lagenoberkante \(400 mm\)/.test($('gp-msg').textContent)
     && alleDaten139() === vorFehl139 && GP.undoStand.undo === undoVor139);
   // … und die benannte Grenze gegen Hoehe/Ausgleichslage im selben Schritt.
@@ -7150,7 +7160,8 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   await warte();
   ok('#139 (Muss 6/7) Lage 12 fehlt der Wand ohne Ausgleichslage — die Sammelaenderung wird '
     + 'benannt abgebrochen und beide Waende bleiben unveraendert',
-    /nicht möglich/.test($('gp-msg').textContent) && /Ohne AG/.test($('gp-msg').textContent)
+    /nicht möglich/.test($('gp-msg').textContent)
+    && $('gp-msg').textContent.includes(store.holeElement(o139).name)
     && [o139, m139].map(zp139).join(' | ') === vorAg);
   blech139(1, 'ziel', 11);
   $('gp-sammel-go').dispatch('click');
@@ -7359,7 +7370,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
 
   // (g) Must-not: kein Datenmodell, kein Schema, kein zweiter Baustein.
   ok('#145 (must-not) die Zugaenglichkeit hat kein gespeichertes Feld angelegt',
-    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
     && !/aria|ax-b-|ax_tip/i.test(localStorage.getItem('sembla:projekte') || '')
     && !/aria|ax-b-/i.test(localStorage.getItem('sembla:elemente') || ''));
   ok('#145 (must-not) der Editor baut den Baustein nicht nach — er benutzt ihn',

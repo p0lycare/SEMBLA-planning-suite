@@ -87,18 +87,25 @@ t("[N-2] der Geschosswechsel liefert eine andere Wandmenge",
 // --- [N-8] Wandkennzeichnung und Kennungen ---------------------------------
 
 const wA = daten.waende.find((w) => w.id === "w-a");
+// Entscheid 03.11.2026: der Wandname einer eingetragenen Wand ist IMMER
+// `Wand_<Geschosskuerzel>-<Nr>` — der mitgegebene Name („Wand A") wird in `normMappe`
+// ueberschrieben. Erwartet wird deshalb der Name der Mappe, nicht der Aufrufwert.
 t("Muss 8: die Wandkennung ist die stabile Mappen-/Speicherkennung",
-  !!wA && wA.id === "w-a" && wA.name === "Wand A");
-t("[#59] die laufende Nummer ist Index+1 der kanonischen Mappenreihenfolge",
+  !!wA && wA.id === "w-a" && wA.name === MAPPE.findeWand(MAPPE0, "w-a").wand.name
+  && wA.name === "Wand_EG-1");
+t("[Wandnummer] die Nummer ist die FESTE Wandnummer der Mappe (`wand.nr`), nicht Index+1",
   daten.waende.map((w) => w.nr).join(",") === "1,2,3,4"
+  && daten.waende.every((w) => w.nr === MAPPE.findeWand(MAPPE0, w.id).wand.nr)
   && daten.waende.map((w) => w.id).join(",") === "w-a,w-b,w-c,w-d");
+t("[Wandnummer] die Nummer gilt je GEBAEUDE — die einzige OG-Wand traegt 5, nicht 1",
+  datenOG.waende[0].nr === 5 && datenOG.waende[0].name === "Wand_OG-5");
 t("Laenge kommt aus der Lage, Hoehe und Wandtyp aus dem Wandelement ([P-1])",
   wA.laenge_mm === 2000 && wA.hoehe_mm === 2600 && wA.wandtyp === "mit_wind");
 const wD = daten.waende.find((w) => w.id === "w-d");
 t("[L-4] ein verwaister Eintrag wird als solcher gefuehrt — ohne geratene Hoehe",
   wD.verwaist === true && wD.hoehe_mm === null && wD.wandtyp === null);
 
-// --- [#59]/[#73] kurze Nummer als Aussenblase, voller Name in der Liste -----
+// --- [#59]/[#73] kurze Nummer als Aussenblase, voller Name im `<title>` --------
 //
 // Der lange Wandname war regelmaessig laenger als das Bauteil (eine 125 mm breite
 // Wand ist bei 1:50 nur 2,5 Papier-mm breit) und ueberdeckte Nachbarwaende und
@@ -221,61 +228,145 @@ t("[#73] die Nummer in der Blase ist unrotiert — bei beiden Richtungen gleich 
   langMarker.every((g) => g.gedreht === false));
 t("[#59] kein Wandname steht mehr als Beschriftung in der Zeichnung",
   langMarker.every((g) => !/[A-Za-zÄÖÜäöüß]/.test(String(g.text)))
-  && !/<text[^>]*>Wand Erdgeschoss/.test(langBlatt.svg));
+  && !/<text[^>]*>Wand_/.test(langBlatt.svg));
 t("[#59] `title` und `data-wand` behalten vollen Namen und stabile Kennung",
   langGruppen.every((g) => g.title === LANG.waende.find((w) => w.id === g.id).name)
   && langGruppen.map((g) => g.id).join(",") === "L1,L2,L3,L5");
 t("[#59] die unverortete Wand wird weiterhin nicht gezeichnet, sondern gemeldet",
-  !langBlatt.svg.includes('data-wand="L4"')
-  && LANG.meldungen.some((x) => x.art === "unverortet" && /noch nicht eingezeichnet/.test(x.text)));
+  !langBlatt.svg.includes('data-wand="L4"') && LANG.waende[3].name === "Wand_EG-4"
+  && LANG.meldungen.some((x) => x.art === "unverortet" && x.text.includes(LANG.waende[3].name)));
 t("[#73] die unverortete und die verwaiste Wand bekommen keine erfundene Markerlage",
   !langMarker.some((g) => g.id === "L4")
   // L5 ist verwaist, aber VERORTET — sie wird gezeichnet und traegt regulaer eine
   // Blase; nur die unverortete L4 hat keinerlei Lage im Plan.
   && langMarker.some((g) => g.id === "L5"));
 
-// Die rechte Tabelle ist der Schluessel von der Zahl zum Namen (Muss 3).
-const tabelle = LP.wandTabelleHtml(LANG);
-const tabZeilen = [...tabelle.matchAll(
-  /<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td><td class="r">([^<]*)<\/td><\/tr>/g)]
-  .map((m) => ({ nr: m[1], name: m[2], hoehe: m[3] }));
-t("[#59] die Tabelle beginnt mit der Nummer und nennt daneben den vollen Namen",
-  /<th class="nr">Nr\.<\/th><th>Wand<\/th>/.test(tabelle)
-  && tabZeilen.length === 5
-  && tabZeilen.map((z) => z.nr).join(",") === "1,2,3,4,5"
-  && tabZeilen[0].name === "Wand Erdgeschoss Nord tragend, Achse A/1–A/5");
-t("[#59] Zeichnung und Liste sind damit eindeutig zugeordnet",
-  langMarker.every((g) => {
-    const z = tabZeilen.find((x) => x.name === LANG.waende.find((w) => w.id === g.id).name);
-    return !!z && z.nr === String(g.text);
+// Die rechte Wandtabelle „Wände im Geschoss" war bis zum Entscheid vom 03.11.2026 der
+// Schluessel von der laufenden Zahl im Plan zum vollen Namen (Muss 3). Seitdem traegt
+// die Blase die FESTE Wandnummer, die im Wandnamen `Wand_<Kuerzel>-<Nr>` steht — die
+// Zuordnung Zahl → Wand ist damit ohne Tabelle eindeutig, und die Tabelle ist
+// ersatzlos entfallen. Geprueft wird beides: dass sie FEHLT und dass die Blase stimmt.
+const WANDNAME = /^Wand_([A-Z0-9]{1,2})-(\d+)$/;
+t("[Wandnummer] die Wandtabelle „Wände im Geschoss“ ist ersatzlos entfallen",
+  LP.wandTabelleHtml === undefined
+  && !langBlatt.html.includes("Wände im Geschoss") && !/lptab/.test(langBlatt.html)
+  && !/lptab/.test(LP.LAGEPLAN_CSS));
+t("[Wandnummer] jeder Wandname ist `Wand_EG-<Nr>` und traegt genau die Nummer der Wand",
+  LANG.waende.every((w) => {
+    const m = WANDNAME.exec(w.name);
+    return !!m && m[1] === "EG" && +m[2] === w.nr;
+  }));
+t("[Wandnummer] die Blasenzahl ist die Zahl im Wandnamen — Zeichnung und Name eindeutig zugeordnet",
+  langMarker.length === 4 && langMarker.every((g) => {
+    const w = LANG.waende.find((x) => x.id === g.id);
+    const m = w && WANDNAME.exec(w.name);
+    return !!m && m[2] === String(g.text) && String(w.nr) === g.text;
   }));
 // #89: die Spalte „Lage" ist entfallen — sie stand doppelt. Dass der unverortete
-// Eintrag als solcher erkennbar bleibt, traegt jetzt allein die Meldung ([N-7]).
-t("[#59]/[#89] der unverortete Eintrag steht mit Nummer in der Liste — ohne erfundene Lage",
-  tabZeilen[3].nr === "4" && /noch nicht eingezeichnet/.test(tabZeilen[3].name)
-  && LANG.waende[3].rechteck === null
+// Eintrag als solcher erkennbar bleibt, traegt allein die Meldung ([N-7]).
+t("[#59]/[#89] der unverortete Eintrag behaelt seine Nummer — ohne erfundene Lage",
+  LANG.waende[3].nr === 4 && LANG.waende[3].rechteck === null
   && LANG.meldungen.some((x) => x.art === "unverortet"
     && x.text.includes(LANG.waende[3].name)));
-t("[#59] der verwaiste Eintrag steht mit Nummer und vollem Namen in der Liste ([L-4])",
-  tabZeilen[4].nr === "5" && /verwaister Eintrag/.test(tabZeilen[4].name)
+t("[#59] der verwaiste Eintrag behaelt Nummer und Namen ([L-4])",
+  LANG.waende[4].nr === 5 && LANG.waende[4].name === "Wand_EG-5"
   && LANG.waende[4].verwaist === true && LANG.waende[4].hoehe_mm === null);
-t("[#59] das vollstaendige Blatt traegt Nummer und Namen an genau diesen Stellen",
-  langBlatt.html.includes(tabelle) && langBlatt.html.includes(langBlatt.svg));
+t("[#59] das vollstaendige Blatt traegt die Zeichnung mit den Blasen",
+  langBlatt.html.includes(langBlatt.svg));
 t("[#59] Vorschau, Dokument und SVG-Datei zeigen bitgenau dieselbe Nummerierung",
   (() => {
     const dok = LP.lageplanDokument(LANG, langBlatt.optionen);
     const svgD = LP.lageplanSvgDatei(LANG, langBlatt.optionen);
     const s = (x) => markerVon(x).map((g) => g.id + ":" + g.text).join(",");
     return s(dok) === s(langBlatt.svg) && s(svgD) === s(langBlatt.svg)
-      && dok.includes(tabelle);
+      && s(dok) === "L1:1,L2:2,L3:3,L5:5" && !dok.includes("Wände im Geschoss");
   })());
 t("[#59] die Nummer ist reine Darstellung — keine zweite Wandkennung im Datensatz",
   LANG.waende.every((w) => w.id !== String(w.nr))
   && !/data-nr=|data-nummer=/.test(langBlatt.svg));
-t("[#73] die Legende erklaert die Nummernblase",
-  /Nummernblase der Wand/.test(LP.legendeHtml()) && /Wände im Geschoss/.test(langBlatt.html));
+const escH = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+t("[#73] die Legende erklaert die Nummernblase als feste Wandnummer",
+  typeof LP.NUMMERNBLASE_TEXT === "string" && /feste Wandnummer/.test(LP.NUMMERNBLASE_TEXT)
+  && LP.legendeHtml().includes(escH(LP.NUMMERNBLASE_TEXT))
+  && !/Wände im Geschoss/.test(LP.legendeHtml()));
 t("[#73] der Block „Darstellung“ mit der Legende bleibt auf dem Blatt bestehen",
   langBlatt.html.includes(`<div class="lpbox"><h4>Darstellung</h4>${LP.legendeHtml()}</div>`));
+
+// --- Feste Wandnummer in der Blase (Entscheid 03.11.2026) -------------------
+//
+// Die Blase zeigt nicht mehr die laufende Nummer der Zeichnung (Index+1, #59), sondern
+// die FESTE Wandnummer `wand.nr` der Mappe — dieselbe Zahl, die im Wandnamen
+// `Wand_<Kuerzel>-<Nr>` steht. Geloeschte Nummern hinterlassen eine Luecke, nichts
+// rueckt nach, und die Reihenfolge der Mappe aendert keine Nummer.
+{
+  let m = MAPPE.leereMappe("Feste Nummer", { gebaeude: "Haus", geschoss: "EG", hoehe_mm: 2600 });
+  const gs = m.gebaeude[0].geschosse[0].id;
+  [62.5, 1062.5, 2062.5].forEach((y, i) => {
+    m = MAPPE.setzeWand(m, gs, { id: `f${i + 1}`,
+      lage: { start_mm: { x: 0, y }, richtung: "x", laenge_grid: 16 } });
+  });
+  const elF = ["f1", "f2", "f3", "f4"].map((id) => ({ id, name: id,
+    wandelement: { height_mm: 2600, wandtyp: "mit_wind", length_mm: 2000 } }));
+  const blasen = (svg) => markerVon(svg).map((g) => g.id + ":" + g.text).sort().join(",");
+  const dVor = LP.lageplanDaten({ mappe: m, geschossId: gs, elemente: elF });
+  t("[Wandnummer] Pruefaufbau: drei Waende mit den Nummern 1, 2, 3 und passenden Namen",
+    blasen(LP.blattHtml(dVor).svg) === "f1:1,f2:2,f3:3"
+    && dVor.waende.map((w) => w.name).join(",") === "Wand_EG-1,Wand_EG-2,Wand_EG-3");
+
+  // (a) Loeschen der ERSTEN Wand: keine Nachrueckung, die 1 bleibt eine Luecke.
+  const mOhne = MAPPE.entferneWand(m, "f1");
+  const dOhne1 = LP.lageplanDaten({ mappe: mOhne, geschossId: gs, elemente: elF });
+  const bOhne1 = LP.blattHtml(dOhne1);
+  t("[Wandnummer] nach dem Loeschen einer frueheren Wand behaelt die Blase ihre feste Nummer",
+    blasen(bOhne1.svg) === "f2:2,f3:3"
+    && dOhne1.waende.map((w) => `${w.id}=${w.nr}`).join(",") === "f2=2,f3=3"
+    && dOhne1.waende.every((w) => w.name === MAPPE.findeWand(mOhne, w.id).wand.name
+      && w.name === `Wand_EG-${w.nr}`));
+  t("[Wandnummer] die geloeschte Nummer bleibt eine Luecke — eine neue Wand bekommt die 4",
+    (() => {
+      const mNeu = MAPPE.setzeWand(mOhne, gs, { id: "f4", name: "frei gewaehlt",
+        lage: { start_mm: { x: 0, y: 3062.5 }, richtung: "x", laenge_grid: 16 } });
+      const d = LP.lageplanDaten({ mappe: mNeu, geschossId: gs, elemente: elF });
+      return blasen(LP.blattHtml(d).svg) === "f2:2,f3:3,f4:4"
+        && MAPPE.findeWand(mNeu, "f4").wand.name === "Wand_EG-4"
+        && !d.waende.some((w) => w.nr === 1);
+    })());
+
+  // (b) Eine Mappe mit Nummernluecke (1, 4, 7) wird so gezeichnet, wie sie ist.
+  t("[Wandnummer] eine Mappe mit Nummernluecke zeigt genau diese Nummern in den Blasen",
+    (() => {
+      const roh = JSON.parse(JSON.stringify(m));
+      roh.gebaeude[0].geschosse[0].waende.forEach((w, i) => { w.nr = 1 + 3 * i; });
+      roh.gebaeude[0].wand_nr_max = 7;
+      const mL = MAPPE.normMappe(roh);
+      const d = LP.lageplanDaten({ mappe: mL, geschossId: gs, elemente: elF });
+      return blasen(LP.blattHtml(d).svg) === "f1:1,f2:4,f3:7"
+        && d.waende.map((w) => w.name).join(",") === "Wand_EG-1,Wand_EG-4,Wand_EG-7";
+    })());
+
+  // (c) Die Reihenfolge der Mappe aendert keine Nummer (frueher: Index+1).
+  t("[Wandnummer] eine umgekehrte Mappenreihenfolge aendert keine Blasenzahl",
+    (() => {
+      const roh = JSON.parse(JSON.stringify(m));
+      roh.gebaeude[0].geschosse[0].waende.reverse();
+      const mU = MAPPE.normMappe(roh);
+      const d = LP.lageplanDaten({ mappe: mU, geschossId: gs, elemente: elF });
+      return d.waende.map((w) => w.id).join(",") === "f3,f2,f1"
+        && d.waende.map((w) => w.nr).join(",") === "3,2,1"
+        && blasen(LP.blattHtml(d).svg) === "f1:1,f2:2,f3:3";
+    })());
+
+  // (d) Vorschau, Druck-HTML, SVG-Datei und Exportbytes tragen dieselbe Zahl.
+  t("[Wandnummer] Vorschau, Druck-HTML, SVG-Datei und Exportbytes zeigen dieselbe feste Nummer",
+    (() => {
+      const dok = LP.lageplanDokument(dOhne1, bOhne1.optionen);
+      const svgD = LP.lageplanSvgDatei(dOhne1, bOhne1.optionen);
+      const dateien = LP.lageplanDateien(dOhne1, bOhne1.optionen);
+      const svgB = dateien.find((f) => /\.svg$/.test(f.name)).data;
+      const htmB = dateien.find((f) => /\.html$/.test(f.name)).data;
+      return [dok, svgD, svgB, htmB].every((x) => blasen(x) === "f2:2,f3:3");
+    })());
+}
 
 // --- [N-4] geloeste Positionen schlagen Rohpositionen ----------------------
 
@@ -299,7 +390,7 @@ const svgEG = LP.lageplanSvg(daten);
 /**
  * Die gezeichneten MASSTEXTKNOTEN (#64) — gezielt aus den `lpmass`-Gruppen, nicht
  * global ueber alle `mm`-Vorkommen: die SVG-Wurzel traegt Papiermasse in mm, und
- * Wandtabelle wie Meldungstexte behalten ihre fachlich noetige Einheit.
+ * Meldungstexte behalten ihre fachlich noetige Einheit.
  */
 const massTexte = (s) => [...s.matchAll(/<g class="lpmass[^"]*"[^>]*>.*?<text\b[^>]*>([^<]*)<\/text>/g)]
   .map((m) => m[1]);
@@ -452,8 +543,7 @@ const daten0 = LP.lageplanDaten({
   geschossId: gsEG, elemente: ELEMENTE,
 });
 const blatt0 = LP.blattHtml(daten0);
-// Das „–" der Wandtabelle (fehlende Hoehe/Wandtyp) bleibt davon unberuehrt — geprueft
-// wird der Zeichnungskopf, nicht das ganze Blatt.
+// Geprueft wird der Zeichnungskopf, nicht das ganze Blatt.
 t("[#59] fehlende Plan-Nr./Index erzeugen keinen Platzhalter",
   kopfPaare(blatt0.html).find((p) => p[0] === "Plan Nr.")[1] === ""
   && kopfPaare(blatt0.html).find((p) => p[0] === "Index")[1] === ""
@@ -528,14 +618,18 @@ mKrumm = MAPPE.setzeWand(mKrumm, gsEG, { id: "w-koll", name: "Wand Kollision",
 const datenK = LP.lageplanDaten({ mappe: mKrumm, geschossId: gsEG, elemente: ELEMENTE });
 const arten = datenK.meldungen.map((x) => x.art);
 const text = datenK.meldungen.map((x) => x.text).join(" | ");
+// Benannt wird mit dem Wandnamen der Mappe (`Wand_<Kuerzel>-<Nr>`, Entscheid 03.11.2026).
+const nameIn = (m, id) => MAPPE.findeWand(m, id).wand.name;
 t("[N-7] die unverortete Wand wird namentlich benannt",
-  arten.includes("unverortet") && /Wand ohne Lage/.test(text));
+  arten.includes("unverortet") && text.includes(nameIn(mKrumm, "w-frei"))
+  && /^Wand_EG-\d+$/.test(nameIn(mKrumm, "w-frei")));
 t("[N-7] der verwaiste Eintrag wird namentlich benannt ([L-4])",
-  arten.includes("verwaist") && /Wand D/.test(text));
+  arten.includes("verwaist") && text.includes(nameIn(mKrumm, "w-d"))
+  && nameIn(mKrumm, "w-d") === "Wand_EG-4");
 t("[N-7] der Widerspruch wird mit Differenz in mm benannt ([K-6])",
   arten.includes("widerspruch") && /500 mm/.test(text));
 t("[N-7] die Kollision wird mit Ueberlappungsmass benannt ([K-13])",
-  arten.includes("kollision") && /Wand Kollision/.test(text) && /125/.test(text));
+  arten.includes("kollision") && text.includes(nameIn(mKrumm, "w-koll")) && /125/.test(text));
 t("[N-7] der Stand gilt damit als NICHT vollstaendig", datenK.vollstaendig === false);
 t("[N-7] das Blatt sagt das sichtbar — im Schriftfeld-Feld „Stand“",
   /nicht vollständig/i.test(LP.blattHtml(datenK).html));
@@ -549,9 +643,12 @@ t("[#73] auch das vollstaendige Blatt traegt keinen Erfolgs-/Hinweistext mehr",
   !blockSpuren.test(LP.blattHtml(datenOG).html)
   && !blockSpuren.test(LP.lageplanDokument(datenK))
   && !blockSpuren.test(LP.lageplanSvgDatei(datenK)));
-t("[#73] entfallen ist NUR die Vollstaendigkeit — Wandliste und Darstellung bleiben",
+// Seit dem Entscheid vom 03.11.2026 ist auch die Wandliste „Wände im Geschoss“ entfallen;
+// die Darstellung (Legende) bleibt.
+t("[#73] entfallen sind Vollstaendigkeit und Wandliste — die Darstellung bleibt",
   [LP.blattHtml(datenK).html, LP.blattHtml(datenOG).html].every((s) =>
-    s.includes("<h4>Wände im Geschoss</h4>") && s.includes("<h4>Darstellung</h4>")
+    !s.includes("<h4>Wände im Geschoss</h4>") && !/lptab/.test(s)
+    && s.includes("<h4>Darstellung</h4>")
     && s.includes(LP.legendeHtml()) && !/>Vollständigkeit</.test(s)));
 t("[#73] die Ableitung selbst bleibt unveraendert — Meldungen und Hinweise stehen weiter darin",
   datenK.meldungen.length > 0 && Array.isArray(datenK.hinweise)
@@ -563,10 +660,10 @@ t("[N-7] ein sauberer Stand wird als vollstaendig ausgegeben und meldet nichts F
 // Normalfall vor dem Bemassen und ausdruecklich KEIN Fehler des Lageplans. Sie steht
 // deshalb als HINWEIS und macht das Blatt nicht unvollstaendig.
 t("[K-8] eine unbestimmte Wand ist ein Hinweis, kein Mangel des Blattes",
-  datenOG.hinweise.some((x) => x.art === "unbestimmt" && /Wand OG/.test(x.text))
+  datenOG.hinweise.some((x) => x.art === "unbestimmt" && x.text.includes(nameIn(MAPPE0, "w-og")))
   && datenOG.vollstaendig === true);
 t("[N-7] eine Laengenabweichung Lage ↔ Wandelement wird gemeldet ([L-3])",
-  daten.meldungen.some((x) => x.art === "laenge" && /Wand C/.test(x.text)));
+  daten.meldungen.some((x) => x.art === "laenge" && x.text.includes(nameIn(MAPPE0, "w-c"))));
 t("[N-7] verwaister Eintrag und Laengenabweichung machen das EG-Blatt unvollstaendig",
   daten.vollstaendig === false
   && daten.meldungen.map((x) => x.art).sort().join(",") === "laenge,verwaist");
@@ -929,7 +1026,8 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
       && muster.test(b.html) && /<h4>Planhintergrund<\/h4>/.test(b.html)
       && d.hinweise.some((h) => h.art === "planhintergrund" && muster.test(h.text))
       && d.vollstaendig === dOhne.vollstaendig
-      && b.html.includes(LP.wandTabelleHtml(d)) && b.html.includes(LP.legendeHtml()));
+      && b.html.includes(b.svg) && !b.html.includes("Wände im Geschoss")
+      && b.html.includes(LP.legendeHtml()));
   }
   t("#80 als gesetzt uebergeben, aber ohne Bilddaten ⇒ unbrauchbar statt geraten",
     LP.normHintergrund({ status: "gesetzt", x: 0, y: 0, breite: 100, hoehe: 100 }).status
@@ -1035,17 +1133,17 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
     && leg.includes("ohne Schraffur") && leg.includes("diagonal schraffiert"));
   t("#79 die Legende sagt, dass die Angabe kein Nachweis ist",
     /Planungskennzeichnung, kein Nachweis/.test(leg));
-  const tab = LP.wandTabelleHtml(d);
-  t("#89 die Wandtabelle hat genau die drei Spalten Nummer, Wand und Höhe",
-    [...tab.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((mm) => mm[1]).join("|")
-      === "Nr.|Wand|Höhe");
-  t("#89 Brandschutz, Länge, Wandtyp und Lage sind keine Tabellenspalten mehr",
-    !/<th[^>]*>(?:Brandschutz|Länge|Wandtyp|Lage)<\/th>/.test(tab)
-    && !/<td>(?:F0|F30|unverortet|frei|x\/y|nur x|nur y|mit Wind|ohne Wind)<\/td>/.test(tab));
-  t("#89 jede Zeile traegt genau drei Zellen — Nummer, voller Name, Höhe",
-    [...tab.matchAll(/<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td><td class="r">([^<]*)<\/td><\/tr>/g)]
-      .map((mm) => mm[1] + ":" + mm[3]).join(",") === "1:2.600 mm,2:2.600 mm,3:2.600 mm,4:–"
-    && (tab.match(/<td/g) || []).length === 12);
+  // #89 hatte die Wandtabelle auf Nummer, Name und Hoehe reduziert; seit dem Entscheid
+  // vom 03.11.2026 ist sie ganz entfallen. Die Absicht bleibt: Brandschutz, Laenge,
+  // Wandtyp und Lage stehen in KEINER Tabelle des Blattes — es gibt gar keine mehr.
+  const blattD = LP.blattHtml(d, {}).html;
+  t("#89/Wandnummer das Blatt traegt keine Wandtabelle mehr — weder Kopf noch Zeilen",
+    !/<table|<th\b|<td\b/.test(blattD) && !blattD.includes("Wände im Geschoss"));
+  t("#89 Brandschutz, Länge, Wandtyp und Lage stehen in keiner Tabellenzelle",
+    !/<t[hd][^>]*>(?:Brandschutz|Länge|Wandtyp|Lage|F0|F30|unverortet|frei|x\/y|nur x|nur y|mit Wind|ohne Wind)<\/t[hd]>/
+      .test(blattD));
+  t("#89 die Hoehe der Waende steht nicht mehr als Tabellenwert im Blatt",
+    !/>2\.600 mm</.test(blattD));
 
   // --- Ein Pfad: Vorschau, Druck-HTML und SVG-Datei zeigen dasselbe -------
   const b = LP.blattHtml(d, {});
@@ -1064,7 +1162,7 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
       const htm = dateien.find((f) => /\.html$/.test(f.name));
       return svg.data === svgD && htm.data === dok
         && bg.every((g) => svg.data.includes(g.roh) && htm.data.includes(g.roh))
-        && htm.data.includes(LP.wandTabelleHtml(d)) && htm.data.includes(leg);
+        && !htm.data.includes("Wände im Geschoss") && htm.data.includes(leg);
     })());
 
   // --- Nicht angefasst: Geometrie, Massstab, Masse, Vollstaendigkeit ------
@@ -1522,6 +1620,12 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
     "v-y": [{ g0: 0, g1: 1, start_parity: 1 }] };
 
   const { m: mV, gs: gsV } = bauVerz();
+  // Die Wandnamen kommen aus der Mappe (`Wand_<Kuerzel>-<Nr>`, Entscheid 03.11.2026) —
+  // die mitgegebenen „Wand X"/„Wand Y" werden in `normMappe` ueberschrieben.
+  const NX = MAPPE.findeWand(mV, "v-x").wand.name, NY = MAPPE.findeWand(mV, "v-y").wand.name;
+  const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  t("#83 Pruefaufbau: die beiden Waende heissen Wand_EG-1 und Wand_EG-2",
+    NX === "Wand_EG-1" && NY === "Wand_EG-2");
   const dOhne = LP.lageplanDaten({ mappe: mV, geschossId: gsV, elemente: elVerz(null) });
   const dVerz = LP.lageplanDaten({ mappe: mV, geschossId: gsV, elemente: elVerz(PASSEND) });
 
@@ -1538,11 +1642,11 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
     dVerz.vollstaendig === true && dVerz.meldungen.length === 0);
   t("#83 die Stelle wird mit BEIDEN Wandnamen als Verbindung benannt",
     dVerz.verzahnungen.length === 1
-    && dVerz.verzahnungen[0].name_a === "Wand X" && dVerz.verzahnungen[0].name_b === "Wand Y"
-    && /Wand X/.test(dVerz.verzahnungen[0].text) && /Wand Y/.test(dVerz.verzahnungen[0].text));
+    && dVerz.verzahnungen[0].name_a === NX && dVerz.verzahnungen[0].name_b === NY
+    && dVerz.verzahnungen[0].text.includes(NX) && dVerz.verzahnungen[0].text.includes(NY));
   t("#83 sie steht als HINWEIS in der Ableitung, nie als Mangel",
-    dVerz.hinweise.some((h) => h.art === "verzahnung" && /Wand X/.test(h.text)
-      && /Wand Y/.test(h.text))
+    dVerz.hinweise.some((h) => h.art === "verzahnung" && h.text.includes(NX)
+      && h.text.includes(NY))
     && !dVerz.meldungen.some((x) => x.art === "verzahnung"));
   t("#83 die beteiligten Waende sind nicht mehr im Fehlerzustand ([K-8])",
     dVerz.waende.every((w) => w.zustand !== "fehler")
@@ -1571,16 +1675,17 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   t("#83 die Zeichnung kennzeichnet die Stelle als eigene Gruppe mit beiden Kennungen",
     vg.length === 1 && vg[0].a === "v-x" && vg[0].b === "v-y");
   t("#83 der Kurztext der Zeichnung nennt beide Wandnamen",
-    /<text class="lpverzahnung-kz"[^>]*>[^<]*Wand X[^<]*Wand Y[^<]*<\/text>/.test(vg[0].inhalt));
+    new RegExp(`<text class="lpverzahnung-kz"[^>]*>[^<]*${reEsc(NX)}[^<]*${reEsc(NY)}[^<]*</text>`)
+      .test(vg[0].inhalt));
   t("#83 die Kennzeichnung traegt ein Merkmal OHNE Farbe (S/W-Ausdruck)",
     (() => {
       const ohneFarbe = vg[0].roh.replace(/\s(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, "");
-      return /stroke-dasharray/.test(ohneFarbe) && /Wand X/.test(ohneFarbe)
-        && /Wand Y/.test(ohneFarbe);
+      return /stroke-dasharray/.test(ohneFarbe) && ohneFarbe.includes(NX)
+        && ohneFarbe.includes(NY);
     })());
   t("#83 das Blatt fuehrt die Verbindung als eigenen Kasten mit beiden Namen",
     /<h4>Verzahnungen<\/h4>/.test(bVerz.html)
-    && /„Wand X“ und „Wand Y“/.test(bVerz.html)
+    && bVerz.html.includes(`„${NX}“ und „${NY}“`)
     && /keine Kollision/.test(bVerz.html)
     && bVerz.html.includes(LP.verzahnungHtml(dVerz)));
   t("#83 der Kasten entsteht nur, wenn es eine Verzahnung gibt",
@@ -1651,8 +1756,8 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
     const d = LP.lageplanDaten({ mappe: mV, geschossId: gsV, elemente: elVerz(il) });
     t(`#83 ${was}: weiterhin Kollision samt Vollstaendigkeitsmangel`,
       d.kollisionen.length === 1 && d.verzahnungen.length === 0
-      && d.meldungen.some((x) => x.art === "kollision" && /Wand X/.test(x.text)
-        && /Wand Y/.test(x.text))
+      && d.meldungen.some((x) => x.art === "kollision" && x.text.includes(NX)
+        && x.text.includes(NY))
       && d.vollstaendig === false
       && !d.hinweise.some((h) => h.art === "verzahnung")
       && LP.blattHtml(d).html === LP.blattHtml(dOhne).html);
@@ -1667,7 +1772,9 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
         wandelement: { height_mm: 2600, wandtyp: "mit_wind", length_mm: 2000,
           interlocks: [{ g0: 0, g1: 16, start_parity: 1 }] } }];
       const d = LP.lageplanDaten({ mappe: doppelt, geschossId: gsV, elemente: el });
-      return d.meldungen.some((x) => x.art === "kollision" && /Wand P/.test(x.text))
+      const NP = MAPPE.findeWand(doppelt, "v-p").wand.name;
+      return NP === "Wand_EG-3"
+        && d.meldungen.some((x) => x.art === "kollision" && x.text.includes(NP))
         && d.vollstaendig === false
         // Die zulaessige Verzahnung der beiden anderen bleibt davon unberuehrt.
         && d.verzahnungen.length === 1;
@@ -1782,11 +1889,20 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
        === JSON.stringify(MAPPE.alleWaende(st.mappeVor).map((x) => [x.wand.id, x.wand.lage]))
     && JSON.stringify(store.holeElement("wnd-vy").wandelement.interlocks)
        === JSON.stringify(PASSEND[1]));
+  // Die Wandnamen sind die der Mappe (`Wand_<Kuerzel>-<Nr>`) — und weil die Nummer am
+  // Mappeneintrag haengt, reisen Name und Nummer unveraendert durch das Archiv.
+  const AX = MAPPE.findeWand(st.mappeVor, "wnd-vx").wand.name;
+  const AY = MAPPE.findeWand(st.mappeVor, "wnd-vy").wand.name;
+  t("#83 der Archivweg erhaelt Wandnamen und feste Wandnummern",
+    AX === "Wand_EG-1" && AY === "Wand_EG-2"
+    && MAPPE.findeWand(st.mappe, "wnd-vx").wand.name === AX
+    && MAPPE.findeWand(st.mappe, "wnd-vy").wand.name === AY
+    && dA.waende.map((w) => `${w.id}=${w.nr}`).join(",") === "wnd-vx=1,wnd-vy=2");
   t("#83 aus dem importierten Stand ist die Stelle weiterhin eine Verzahnung",
     dA.kollisionen.length === 0 && dA.verzahnungen.length === 1
-    && dA.verzahnungen[0].name_a === "Wand X" && dA.verzahnungen[0].name_b === "Wand Y");
+    && dA.verzahnungen[0].name_a === AX && dA.verzahnungen[0].name_b === AY);
   t("#83 das importierte Blatt nennt beide Wandnamen und meldet keinen Mangel",
-    /<h4>Verzahnungen<\/h4>/.test(bA.html) && /„Wand X“ und „Wand Y“/.test(bA.html)
+    /<h4>Verzahnungen<\/h4>/.test(bA.html) && bA.html.includes(`„${AX}“ und „${AY}“`)
     && dA.vollstaendig === true && dA.meldungen.length === 0
     && !/nicht vollständig/i.test(bA.html));
   t("#83 bewertet hat auch hier der Kern — mit den Bereichen aus dem Wandspeicher",
@@ -1805,7 +1921,8 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   const dK = LP.lageplanDaten({ mappe: stK.mappe, geschossId: stK.gsId, elemente: stK.elemente });
   t("#83 eine unzulaessige Ueberlagerung bleibt nach dem Archivweg Kollision",
     dK.kollisionen.length === 1 && dK.verzahnungen.length === 0
-    && dK.meldungen.some((x) => x.art === "kollision" && /Wand X/.test(x.text))
+    && dK.meldungen.some((x) => x.art === "kollision"
+      && x.text.includes(MAPPE.findeWand(stK.mappe, "wnd-vx").wand.name))
     && dK.vollstaendig === false
     && /nicht vollständig/i.test(LP.blattHtml(dK).html));
 

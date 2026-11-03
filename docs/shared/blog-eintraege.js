@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261103-03",
+    datum: "2026-11-03",
+    typ: "feature",
+    issue: 87,
+    titel: "Wandnamen sind feste Wandnummern je Gebäude (Wand_EG-12); der Lageplan zeigt sie in der Blase, die Wandtabelle entfällt",
+    testbitte: "In Modul 0 ein Geschoss mit Kürzel anlegen, im Geschosseditor drei Wände zeichnen, eine löschen, "
+      + "eine duplizieren: Namen Wand_EG-1 … -4, die gelöschte Nummer bleibt frei. Lageplan: Blase = Nummer, keine Wandtabelle",
+  },
+  {
     id: "chg-20261103-02",
     datum: "2026-11-03",
     typ: "fix",

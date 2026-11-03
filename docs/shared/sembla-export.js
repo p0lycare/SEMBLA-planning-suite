@@ -1003,9 +1003,10 @@ export function gesamtstuecklisteDateien(daten, opts = {}) {
 // (nicht vorkommende Kombination). Zusaetzlich steht jede Luecke wie in den anderen Dateien
 // im Kopf ([P-9]).
 
-/** Feste fuehrende Spalten der Matrix — die Wandreferenz (#132). Die Nummer ist die laufende
- * Nummer der KANONISCHEN Mappenreihenfolge je Geschoss — dieselbe, die Lageplan (#59/#73) und
- * Geschosseditor tragen; sie wird hier aus derselben Reihenfolge gezaehlt, nie gespeichert. */
+/** Feste fuehrende Spalten der Matrix — die Wandreferenz (#132). Die Nummer ist seit [L-14]
+ * die FESTE Wandnummer aus der Projektmappe (je Gebaeude eindeutig) — dieselbe Zahl, die die
+ * Lageplan-Blase und der Wandname `Wand_<Kuerzel>-<Nr>` tragen. Nur ein Ref ohne Nummer
+ * (Altaufrufer) faellt auf die laufende Zaehlung je Geschoss zurueck. */
 export const MATRIX_KOPFSPALTEN = ["Gebäude", "Geschoss", "Wand", "Nr. (Lageplan)", "Stand"];
 
 /** Wortlaut der Summenzeilen — klar benannt, wie das Issue es verlangt (#132). */
@@ -1111,7 +1112,7 @@ export function matrixStuecklisteAoa(daten, opts = {}) {
     const ok = gerechnet.has(ref.wandId);
     const zelle = zellen.get(ref.wandId) || new Array(positionen.length).fill(0);
     zeilen.push([
-      ref.gebaeude || "", ref.geschoss || "", ref.name, nr,
+      ref.gebaeude || "", ref.geschoss || "", ref.name, ref.nr ?? nr,
       ok ? "" : "LÜCKE – " + (luecke.get(ref.wandId) || "Wandstückliste nicht ableitbar."),
       // Leere Zellen einer Luecken-Wand: sie geht NIE als stille Null in die Summen ein.
       ...(ok ? zelle : new Array(positionen.length).fill("")),

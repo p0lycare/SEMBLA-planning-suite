@@ -445,7 +445,7 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
     return (w && (w.name || w.id)) || String(id);
   };
 
-  const waende = waendeRoh.map((w, i) => {
+  const waende = waendeRoh.map((w) => {
     const el = nachId.get(w.id) || null;
     const we = el && el.wandelement ? el.wandelement : null;
     const lage = normLage(w.lage);
@@ -454,12 +454,12 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
     const bestimmt = erg.bestimmt[w.id] || { x: false, y: false };
     const eintrag = {
       id: w.id,
-      // Laufende Nummer der Zeichnung (#59): Index+1 der KANONISCHEN Mappenreihenfolge
-      // `geschoss.waende` — einschliesslich unverorteter und verwaister Eintraege, damit
-      // Zeichnung und rechte Liste lueckenlos dieselbe Zuordnung tragen. Sie ist reine
-      // Darstellung: nicht gespeichert, keine zweite Wandkennung. Identifiziert wird
-      // weiter ueber die stabile `id` (`data-wand`) und den Namen (`<title>`).
-      nr: i + 1,
+      // Die FESTE Wandnummer aus der Projektmappe (je Gebaeude eindeutig, Entscheid
+      // 03.11.2026) — dieselbe Zahl, die im Wandnamen `Wand_<Kuerzel>-<Nr>` steht. Sie
+      // ersetzt die fruehere laufende Nummer der Zeichnung (Index+1, #59): eine
+      // geloeschte Wand laesst ihre Nummer als Luecke zurueck, nichts rueckt nach, und
+      // die Blase im Plan passt zu Stueckliste, Wandzeichnung und Dateinamen.
+      nr: w.nr,
       name: w.name || w.id,
       verwaist: !el,
       richtung: lage ? lage.richtung : null,
@@ -1002,9 +1002,9 @@ export function lageplanSvg(daten, opts) {
       // Mittellinie und Nachbarmassen. Die Blase sitzt in festem Papier-mm-Abstand
       // QUER zur Wandrichtung (x-Wand: oberhalb, y-Wand: links) — deterministisch
       // und unrotiert, damit sie bei beiden Richtungen gleich lesbar ist; die
-      // Fuehrungslinie laeuft vom Blasenrand auf die Wandkante. Der volle Name steht
-      // unveraendert im `<title>` der Wand und mit derselben Nummer in der rechten
-      // Wandtabelle; die Blase traegt `data-wand` fuer die eindeutige Zuordnung.
+      // Fuehrungslinie laeuft vom Blasenrand auf die Wandkante. Die Blase zeigt die
+      // FESTE Wandnummer (die Zahl aus `Wand_<Kuerzel>-<Nr>`); der volle Name steht im
+      // `<title>` der Wand, die Blase traegt `data-wand` fuer die eindeutige Zuordnung.
       const quer = w.richtung !== "y";
       // Ueberdeckungsfreie Platzierung (#59, seit #89 auch gegen die Wandflaechen).
       // Kandidat 0 ist BITGENAU die Lage von #73; jeder weitere schiebt die Blase auf
@@ -1235,6 +1235,12 @@ export function schriftfeldHtml(daten, masstab, opts) {          // eslint-disab
   return `<div class="lptitleblock">${spalten}</div>`;
 }
 
+/**
+ * Legendentext der Nummernblase — EIN Wortlaut fuer Vorschau/Druck/Export und das
+ * Zeichnungs-PDF (`sembla-zeichnungspdf.js`).
+ */
+export const NUMMERNBLASE_TEXT = "Nummernblase: feste Wandnummer — Wandname Wand_<Geschosskürzel>-<Nummer>";
+
 /** Legende des Darstellungsschluessels. */
 export function legendeHtml() {
   const i = (c, cls) => `<i class="${cls || ""}" style="background:${c}"></i>`;
@@ -1258,9 +1264,9 @@ export function legendeHtml() {
     + `${BRANDKLASSE.F30.name} — Wandfläche ${BRANDKLASSE.F30.merkmal} `
     + `(Planungskennzeichnung, kein Nachweis)</span>`
     + `<span>${i(FARBE.mass)}treibende Bemaßung ([K-3])</span>`
-    // #59/#73: die Nummernblase ist eine reine Lesehilfe des Blattes und keine
-    // Wandkennung — nachgeschlagen wird sie in der Wandliste.
-    + `<span><b>1</b> Nummernblase der Wand — Name s. „Wände im Geschoss"</span>`
+    // Die Nummernblase traegt seit dem Entscheid vom 03.11.2026 die FESTE Wandnummer —
+    // die Zahl aus dem Wandnamen; die fruehere Wandtabelle als Schluessel ist entfallen.
+    + `<span><b>1</b> ${_esc(NUMMERNBLASE_TEXT)}</span>`
     + `<span>${i(FARBE.fehler, "plate")}Widerspruch / Kollision ([K-6]/[K-13])</span>`
     + `</div>`;
 }
@@ -1309,31 +1315,6 @@ export function verzahnungHtml(daten) {
 }
 
 /**
- * Wandtabelle: Nummer, Name, Höhe — und sonst nichts (#89).
- *
- * Die Nummer der ersten Spalte ist GENAU die, die in der Draufsicht in der
- * Nummernblase der Wand steht (#59/#73) — die Tabelle ist damit der Schluessel von
- * der kurzen Zahl im Plan zum vollstaendigen Wandnamen. Unverortete und verwaiste Eintraege stehen
- * weiter mit ihrer Nummer in der Liste; es wird keine Lage und keine Ersatzkennung
- * erfunden ([L-4]/[N-7]).
- *
- * Die frueheren Spalten Laenge, Wandtyp, Brandschutz und Lage sind mit #89 entfallen:
- * die Laenge steht als treibende Bemassung massstaeblich im Plan, die
- * Brandschutzklassifikation im Darstellungsschluessel der Legende, und Lage und
- * Bestimmtheit standen hier DOPPELT — sie werden unveraendert namentlich gemeldet
- * (unverortet, ungueltige Lage, verwaist, Laengenabweichung, unbestimmt). Der Wegfall
- * der Spalte nimmt also keine einzige Aussage vom Blatt ([N-7] bleibt vollstaendig).
- */
-export function wandTabelleHtml(daten) {
-  const zeilen = daten.waende.map((w) => `<tr><td class="nr">${_esc(w.nr)}</td>`
-    + `<td>${_esc(w.name)}</td>`
-    + `<td class="r">${w.hoehe_mm == null ? "–" : _fmt(w.hoehe_mm) + " mm"}</td></tr>`).join("");
-  return `<table class="lptab"><thead><tr><th class="nr">Nr.</th><th>Wand</th>`
-    + `<th class="r">Höhe</th></tr></thead>`
-    + `<tbody>${zeilen || '<tr><td colspan="3">keine Wand eingetragen</td></tr>'}</tbody></table>`;
-}
-
-/**
  * Das komplette Lageplanblatt als HTML-Baustein. Vorschau (Modul 9) und Export
  * nutzen GENAU diese Funktion — es gibt keine zweite Blatt-/Zeichenlogik (Muss 9).
  *
@@ -1368,7 +1349,9 @@ export function blattHtml(daten, opts) {
       + `maßstabsgetreu</b>. Größeres Blattformat wählen ([N-8]).</div>`)
     + `<div class="lpsvg">${z.svg}</div></div>`
     + `<aside class="lpside">`
-    + `<div class="lpbox"><h4>Wände im Geschoss</h4>${wandTabelleHtml(daten)}</div>`
+    // Die fruehere Wandtabelle „Wände im Geschoss" (Nr. | Wand | Höhe) ist mit dem
+    // Entscheid vom 03.11.2026 ersatzlos entfallen: die Blase traegt die feste
+    // Wandnummer, die im Wandnamen steht — ein Schluessel ist nicht mehr noetig.
     + `<div class="lpbox"><h4>Darstellung</h4>${legendeHtml()}</div>`
     // #80/[N-9]: nur vorhanden, wenn dem Geschoss ein Plan hinterlegt ist — sonst
     // waere es ein Kasten ueber eine Sache, die es nicht gibt.
@@ -1422,14 +1405,6 @@ ${FORMATE.map((f) => `  .lpsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${bl
           overflow:hidden}
   .lpbox{border:1px solid #dfe3e8;border-radius:3px;padding:7px 9px;min-height:0;overflow:hidden}
   .lpbox h4{margin:0 0 5px;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#6b7682}
-  table.lptab{width:100%;border-collapse:collapse;font-size:10.5px}
-  table.lptab th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.3px;
-                 color:#6b7682;border-bottom:1px solid #e3e7ec;padding:1px 2px;font-weight:600}
-  table.lptab td{padding:1.5px 2px;vertical-align:top;border-bottom:1px solid #f1f3f6}
-  table.lptab td.r,table.lptab th.r{text-align:right;font-variant-numeric:tabular-nums}
-  table.lptab td.nr,table.lptab th.nr{width:20px;text-align:right;padding-right:5px;
-                                      font-variant-numeric:tabular-nums}
-  table.lptab td.nr{font-weight:700;color:#1c2430}
   /* #80: Angabe zum Planhintergrund — nur vorhanden, wenn ein Plan hinterlegt ist. */
   .lpbg-info{margin:0;font-size:10px;line-height:1.45;color:#4a5663}
   /* #83: zulaessige Wandverzahnungen — nur vorhanden, wenn es welche gibt. */

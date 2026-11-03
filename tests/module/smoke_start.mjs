@@ -268,10 +268,16 @@ async function projektAnlegen(name, kopf = {}, katalog = ''){
   await $('pp-speichern').dispatch('click');
   return store.holeMappe();
 }
-/** Geschoss ueber den echten Dialog anlegen. */
-function geschossAnlegen(projektId, name, hoehe){
+/**
+ * Geschoss ueber den echten Dialog anlegen. Die Bezeichnung wird wie beim Tippen mit
+ * einem `input`-Ereignis gesetzt — daran haengt seit dem Entscheid vom 03.11.2026 der
+ * Kuerzelvorschlag (Pflichtfeld `#gp-kuerzel`, „OG“ → OG). Optional ein eigenes Kuerzel.
+ */
+function geschossAnlegen(projektId, name, hoehe, kuerzel){
   baum('gs-neu', projektId);
   $('gp-name').value = name;
+  $('gp-name').dispatch('input');
+  if (kuerzel != null) { $('gp-kuerzel').value = kuerzel; $('gp-kuerzel').dispatch('input'); }
   $('gp-hoehe').value = hoehe == null ? '' : String(hoehe);
   $('gp-speichern').dispatch('click');
   return store.aktivesGeschossId();
@@ -289,6 +295,13 @@ function geschossAnlegen(projektId, name, hoehe){
  * Dass Modul 0 selbst KEINEN Anlageweg mehr anbietet, prueft Abschnitt 1 gesondert.
  */
 function wandAnlegen(geschossId, { name, laenge = 2000, hoehe = 2600, wandtyp = 'mit_wind' }){
+  // Wie `naechsterName()` im Geschosseditor (Entscheid 03.11.2026): angelegt wird gleich mit
+  // dem Namen, den die Wand beim Eintragen bekommt — `Wand_<Kuerzel>-<naechste Nr>` des
+  // Gebaeudes. Der mitgegebene `name` ist nur noch Beschriftung des Aufrufs; er gilt allein
+  // dann, wenn das Geschoss unbekannt ist (die Mappe vergaebe ohnehin den erzeugten Namen).
+  const m = store.listeProjekte().find(p => MAPPE.findeGeschoss(p, geschossId));
+  const t = m ? MAPPE.findeGeschoss(m, geschossId) : null;
+  if (t) name = MAPPE.wandName(t.geschoss.kuerzel, MAPPE.naechsteWandNr(m, t.gebaeude.id));
   const anlage = WA.legeWandAn(store, { name, laenge_mm: laenge, hoehe_mm: hoehe, wandtyp });
   store.verorteWand(anlage.id, geschossId, { name, lage: null });
   try { store.setzeAktiv(anlage.id); } catch { /* nicht aktivierbar: Zeiger bleibt */ }
@@ -316,8 +329,10 @@ ok('#56 der Dateiimport bleibt als eigener, ausdruecklicher Weg erhalten',
   // im Quelltext statt als fertiges Attribut, gerendert wird unveraendert `data-act`.
   /'wand-import'/.test(html) && /Wand aus Datei importieren/.test(html)
   && /id="f-import"/.test(html) && /id="btn-vorlage-wand"/.test(html));
-ok('#56 der einzige Schreibknopf des Popups ist das Umbenennen',
-  /id="btn-neu" hidden>Namen speichern</.test(html));
+// Seit dem Entscheid vom 03.11.2026 ist auch das Umbenennen entfallen: der Wandname wird
+// aus Geschosskuerzel und Wandnummer erzeugt — das Popup hat GAR KEINEN Schreibknopf mehr.
+ok('Wandname: das Wand-Popup hat keinen Schreibknopf mehr (kein Umbenennen)',
+  !/id="btn-neu"/.test(html) && /id="f-name" type="text" readonly/.test(html));
 
 // --- 2) Der Wandtyp steht am Wandelement (M1) ------------------------------
 // Angelegt wird im Geschosseditor (s. `wandAnlegen`); Modul 0 zeigt und verwaltet nur.
@@ -329,13 +344,14 @@ ok('[L-4] die neue Wand ist im Geschoss eingetragen — ohne erfundene Lage',
   store.wandVerortung(idOhneWind)?.geschoss.id === gs0
   && store.wandVerortung(idOhneWind).wand.lage === null);
 ok('[L-10] die Wand des aktiven Geschosses wird dabei aktiv gesetzt', store.aktivId() === idOhneWind);
-ok('Modul 0 zeigt die neue Wand ohne eigenes Zutun in der Baumliste',
-  $('tr-baum').innerHTML.includes('Wand ohne Wind'));
+ok('Modul 0 zeigt die neue Wand ohne eigenes Zutun in der Baumliste — mit erzeugtem Namen',
+  store.holeElement(idOhneWind).name === 'Wand_G1-1'
+  && $('tr-baum').innerHTML.includes('Wand_G1-1'));
 
 wandAnlegen(gs0, { name:'Wand mit Wind', wandtyp:'mit_wind' });
 ok('zweites Element mit eigenem Wandtyp', store.aktivesWandelement().wandtyp==='mit_wind');
 ok('erstes Element behaelt seinen Wandtyp',
-  store.listeElemente().find(e=>e.name==='Wand ohne Wind').wandelement.wandtyp==='ohne_wind');
+  store.holeElement(idOhneWind).wandelement.wandtyp==='ohne_wind');
 
 // unsinnige Auswahl faellt auf den kompatiblen Standard zurueck
 wandAnlegen(gs0, { name:'Wand kaputt', wandtyp:'quatsch' });
@@ -388,8 +404,11 @@ ok('#67 bitgleich die bestehende Wandableitung (kein zweiter Mengenpfad)', (() =
   const soll = baueDateien(store.projektObjekt(aktivId), ['stueckliste'], null);
   return zipCalls.length && zipCalls[0].files[0].data === soll[0].data
     && zipCalls[0].files[1].data === soll[1].data; })());
+// Der Wandname ist seit dem Entscheid vom 03.11.2026 erzeugt (Wand_<Kuerzel>-<Nr>): die
+// dritte Wand des Gebaeudes heisst `Wand_G1-3`, der mitgegebene Name „Wand kaputt" zaehlt nicht.
 ok('#67 ZIP-Name folgt Ebene und Wand',
-  zipCalls.length && zipCalls[0].name === 'SEMBLA_Export_Wand_' + ARCHIV.sicherStamm('Wand kaputt') + '.zip');
+  store.holeElement(aktivId).name === 'Wand_G1-3'
+  && zipCalls.length && zipCalls[0].name === 'SEMBLA_Export_Wand_' + ARCHIV.sicherStamm('Wand_G1-3') + '.zip');
 ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
 
 // --- 4a) #81: Mengenfassung der Baustellenstueckliste ist im Dialog waehlbar ---------------
@@ -540,7 +559,7 @@ $('exp-go').dispatch('click');
 const wDatei = zipCalls.length ? zipCalls[0].files[0] : { name: '', data: '' };
 ok('#67 Wanddatei-Haekchen erzeugt genau eine JSON-Datei',
   zipCalls.length === 1 && zipCalls[0].files.length === 1
-  && wDatei.name === ARCHIV.wandPfad({ id: aktivId, name: 'Wand kaputt' }));
+  && wDatei.name === ARCHIV.wandPfad({ id: aktivId, name: 'Wand_G1-3' }));
 ok('#67 die Wanddatei bleibt SEMBLA-Projekt v2 und bitgleich store.projektObjekt', (() => {
   const o = JSON.parse(wDatei.data || '{}');
   return o.format === 'SEMBLA-Projekt' && o.version === 2
@@ -748,6 +767,34 @@ function v2Projekt(patch){
   if (patch.wandtyp !== undefined) p.wandelement.wandtyp = patch.wandtyp;
   return JSON.stringify(p);
 }
+/**
+ * Seit dem Entscheid vom 03.11.2026 bekommt eine Wand, die in ein Geschoss eingetragen
+ * wird, die NAECHSTE Wandnummer ihres Gebaeudes und heisst `Wand_<Kuerzel>-<Nr>` — das
+ * Namensfeld des Dialogs zeigt diesen Namen dann nur an. Den erwarteten Namen rechnen wir
+ * ueber die kanonischen Funktionen der Projektmappe aus, statt ihn zu raten.
+ */
+function impZielName(geschossId = store.aktivesGeschoss().geschoss.id){
+  const m = store.holeMappe();
+  const t = MAPPE.findeGeschoss(m, geschossId);
+  return MAPPE.wandName(t.geschoss.kuerzel, MAPPE.naechsteWandNr(m, t.gebaeude.id));
+}
+/**
+ * Der freie Namensvorschlag (Projektname, Elementname, Dateiname) gilt nur noch, wenn
+ * es KEIN Zielgeschoss gibt — die Wand bliebe dann nicht eingetragen und behielte ihren
+ * freien Namen. Das ist der Stand eines Browsers OHNE Projekt (gibt es genau ein Projekt,
+ * faellt die Speicherschicht ohne aktiven Zeiger auf dieses zurueck). Der Block stellt
+ * diesen Stand her, indem er die Projektliste samt Projektzeigern beiseitelegt, und legt
+ * sie danach bytegleich zurueck. Im Block wird nur geoeffnet und abgebrochen.
+ */
+const PRJ_SCHLUESSEL = ['sembla:projekte', 'sembla:aktiv:projekt', 'sembla:aktiv:gebaeude', 'sembla:aktiv:geschoss'];
+async function ohneZielgeschoss(fn){
+  const gesichert = PRJ_SCHLUESSEL.map(k => [k, localStorage.getItem(k)]);
+  for (const k of PRJ_SCHLUESSEL) localStorage.removeItem(k);
+  try { return await fn(); }
+  finally {
+    for (const [k, v] of gesichert) { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }
+  }
+}
 
 // 6a) Bestaetigungsdialog ist an der echten Oberflaeche vorhanden
 ok('Import-Dialog mit Overlay vorhanden', /<div class="overlay" id="imp-overlay" hidden>/.test(html));
@@ -762,7 +809,12 @@ await impWaehle(v2Projekt({ projektName:'Musterprojekt Nord', weName:'Wand' }), 
 ok('Dialog ist nach der Dateiauswahl sichtbar', $('imp-overlay').hidden === false);
 ok('vor der Bestaetigung wird KEIN Element gespeichert', anzahl() === anzahlVor && stand() === standVor);
 ok('vor der Bestaetigung bleibt der aktive Zeiger unveraendert', store.aktivId() === aktivVor);
-ok('Namensvorschlag ist der Projektname aus der Datei', $('imp-name').value === 'Musterprojekt Nord');
+// Mit Zielgeschoss (hier das aktive gs0) steht im Feld der ERZEUGTE Name — nur Anzeige.
+const impZiel = impZielName();
+ok('mit Zielgeschoss zeigt das Feld den erzeugten Namen (naechste Wandnummer), nur lesbar',
+  /^Wand_G1-\d+$/.test(impZiel) && $('imp-name').value === impZiel && $('imp-name').readOnly === true
+  && $('imp-name-hinweis').hidden === false && /nächsten Wandnummer/.test($('imp-name-hinweis').innerHTML)
+  && /aria-describedby="imp-name-hinweis"/.test(html));
 ok('Dialog nennt die gelesene Datei', $('imp-datei').textContent === 'export-2026.json');
 ok('Zusammenfassung zeigt die echten Wandmaße',
   impInfo().includes(store.holeElement(aktivKat).wandelement.length_mm + ' × '
@@ -771,6 +823,19 @@ ok('Zusammenfassung zeigt den kanonisch beschrifteten Wandtyp',
   /Wandtyp \(Windsituation\)/.test(impInfo()) && /Innenwand mit Wind \(Cpi\)/.test(impInfo()));
 ok('Zusammenfassung nennt die Öffnungszahl aus der Datei',
   /Öffnungen:<\/b> 0/.test(impInfo()));
+$('imp-cancel').dispatch('click');
+// Ohne Zielgeschoss bleibt der freie Namensvorschlag (Projektname aus der Datei).
+await ohneZielgeschoss(async () => {
+  await impWaehle(v2Projekt({ projektName:'Musterprojekt Nord', weName:'Wand' }), 'export-2026.json');
+  ok('Namensvorschlag ist der Projektname aus der Datei (ohne Zielgeschoss, frei editierbar)',
+    $('imp-name').value === 'Musterprojekt Nord' && $('imp-name').readOnly === false
+    && $('imp-name-hinweis').hidden === true);
+  $('imp-cancel').dispatch('click');
+});
+ok('der Block ohne Zielgeschoss hat nichts geschrieben und die Zeiger wiederhergestellt',
+  anzahl() === anzahlVor && stand() === standVor && store.aktivId() === aktivVor
+  && store.aktivesGeschossId() === gs0);
+await impWaehle(v2Projekt({ projektName:'Musterprojekt Nord', weName:'Wand' }), 'export-2026.json');
 
 // 6c) Abbrechen wirkt nicht und gibt die Dateiauswahl wieder frei
 $('imp-cancel').dispatch('click');
@@ -788,17 +853,21 @@ ok('abgelehnter Name speichert nichts', anzahl() === anzahlVor && stand() === st
 ok('Dialog bleibt zur Korrektur offen', $('imp-overlay').hidden === false);
 
 // 6e) Bestaetigung: genau einmal speichern, aktiv setzen, Feedback, Hervorhebung, Scroll
+// Das Feld ist mit Zielgeschoss nur lesbar. Selbst ein (am readonly vorbei) manipulierter
+// Wert setzt sich nicht durch: die eingetragene Wand heisst IMMER `Wand_<Kuerzel>-<Nr>`.
 const scrollVor = scrollAufrufe.length;
 $('imp-name').value = '  Halle Ost  ';
 $('imp-go').dispatch('click');
 const neu = store.aktivesElement();
 ok('Bestaetigung legt genau ein Element an', anzahl() === anzahlVor + 1);
-ok('der editierte Name wird verwendet (getrimmt)', neu.name === 'Halle Ost');
+ok('der erzeugte Name wird verwendet — Eintrag UND Wandelement, der Feldwert zaehlt nicht',
+  neu.name === impZiel && neu.wandelement.name === impZiel
+  && store.wandVerortung(neu.id)?.wand.name === impZiel);
 ok('[L-10] das importierte Element ist aktiv (sein Geschoss ist aktiv)',
   store.aktivId() === neu.id && neu.id !== aktivVor);
 ok('Dialog ist geschlossen', $('imp-overlay').hidden === true);
 ok('sichtbares Erfolgsfeedback nennt Name, Import und den Ort in der Struktur',
-  /Halle Ost/.test(trMsgTxt()) && /importiert/.test(trMsgTxt())
+  trMsgTxt().includes('„' + impZiel + '“') && !/Halle Ost/.test(trMsgTxt()) && /importiert/.test(trMsgTxt())
   && /eingetragen in Geschoss/.test(trMsgTxt()) && !trFehler());
 // #88: Die importierte Wand ist im Geschoss eingetragen — und liegt seit #88 sofort
 // sichtbar AM GESCHOSSURSPRUNG (Richtung x, Laenge aus dem Wandelement). Ohne diese
@@ -839,15 +908,23 @@ ok('Hervorhebung bleibt, aber es wird nicht erneut gescrollt',
   scrollAufrufe.length === scrollNachImport
   && new RegExp('data-wand="' + neu.id + '"').test($('tr-baum').innerHTML));
 
-// 6f) Namensfallback: generischer Elementname -> Dateiname ohne .json
-await impWaehle(v2Projekt({ projektName:'', name:'Wand', weName:'Wandelement' }), 'Kellerwand West.json');
-ok('generische Namen werden verworfen -> Dateiname ohne .json',
-  $('imp-name').value === 'Kellerwand West');
-$('imp-cancel').dispatch('click');
+// 6f) Namensfallback: generischer Elementname -> Dateiname ohne .json. Der freie
+// Vorschlag gilt nur ohne Zielgeschoss (s. `ohneZielgeschoss`).
+await ohneZielgeschoss(async () => {
+  await impWaehle(v2Projekt({ projektName:'', name:'Wand', weName:'Wandelement' }), 'Kellerwand West.json');
+  ok('generische Namen werden verworfen -> Dateiname ohne .json',
+    $('imp-name').value === 'Kellerwand West');
+  $('imp-cancel').dispatch('click');
 
-// Sinnvoller expliziter Elementname schlaegt den Dateinamen
+  // Sinnvoller expliziter Elementname schlaegt den Dateinamen
+  await impWaehle(v2Projekt({ projektName:'   ', name:'Wand C', weName:'Wand' }), 'irgendwas.json');
+  ok('expliziter Elementname wird vor dem Dateinamen vorgeschlagen', $('imp-name').value === 'Wand C');
+  $('imp-cancel').dispatch('click');
+});
+// Mit Zielgeschoss dagegen steht unabhaengig von der Datei der erzeugte Name im Feld.
 await impWaehle(v2Projekt({ projektName:'   ', name:'Wand C', weName:'Wand' }), 'irgendwas.json');
-ok('expliziter Elementname wird vor dem Dateinamen vorgeschlagen', $('imp-name').value === 'Wand C');
+ok('mit Zielgeschoss schlaegt der erzeugte Name jeden Dateivorschlag',
+  $('imp-name').value === impZielName() && $('imp-name').readOnly === true);
 $('imp-cancel').dispatch('click');
 
 // 6g) Wandtyp „ohne Wind" wird kanonisch beschriftet
@@ -858,23 +935,38 @@ $('imp-cancel').dispatch('click');
 // 6h) Rohes Wandelement (aeltestes Format) laeuft weiter durch den Dialog
 const rohWe = JSON.parse(JSON.stringify(store.holeElement(aktivKat).wandelement));
 rohWe.name = 'Wand';
+await ohneZielgeschoss(async () => {
+  await impWaehle(JSON.stringify(rohWe), 'Rohwand.json');
+  ok('rohes Wandelement oeffnet den Dialog mit Dateinamen-Vorschlag (ohne Zielgeschoss)',
+    $('imp-overlay').hidden === false && $('imp-name').value === 'Rohwand');
+  $('imp-cancel').dispatch('click');
+});
 await impWaehle(JSON.stringify(rohWe), 'Rohwand.json');
-ok('rohes Wandelement oeffnet den Dialog mit Dateinamen-Vorschlag',
-  $('imp-overlay').hidden === false && $('imp-name').value === 'Rohwand');
+const rohZiel = impZielName();
+ok('rohes Wandelement: mit Zielgeschoss steht der erzeugte Name im Dialog',
+  $('imp-overlay').hidden === false && $('imp-name').value === rohZiel);
 $('imp-go').dispatch('click');
 ok('rohes Wandelement wird nach Bestaetigung gespeichert und aktiv',
-  anzahl() === anzahlVor + 2 && store.aktivesElement().name === 'Rohwand');
+  anzahl() === anzahlVor + 2 && store.aktivesElement().name === rohZiel
+  && store.aktivesElement().wandelement.name === rohZiel);
 
 // 6i) Alt-Bundle (format ohne version, projekt-Block) bleibt unterstuetzt
 const altBundle = JSON.stringify({
   format:'SEMBLA-Projekt', wandelement: rohWe,
   projekt:{ name:'Altprojekt Süd', bauherr:'Alt-Bauherr' },
 });
+await ohneZielgeschoss(async () => {
+  await impWaehle(altBundle, 'alt-bundle.json');
+  ok('Alt-Bundle: Projektname aus dem projekt-Block vorgeschlagen (ohne Zielgeschoss)',
+    $('imp-name').value === 'Altprojekt Süd');
+  $('imp-cancel').dispatch('click');
+});
 await impWaehle(altBundle, 'alt-bundle.json');
-ok('Alt-Bundle: Projektname aus dem projekt-Block vorgeschlagen', $('imp-name').value === 'Altprojekt Süd');
+const altZiel = impZielName();
 $('imp-go').dispatch('click');
 const altNeu = store.aktivesElement();
-ok('Alt-Bundle importiert und aktiv', anzahl() === anzahlVor + 3 && altNeu.name === 'Altprojekt Süd');
+ok('Alt-Bundle importiert und aktiv — mit der naechsten Wandnummer',
+  anzahl() === anzahlVor + 3 && altNeu.name === altZiel && altZiel !== rohZiel);
 ok('Alt-Bundle: Kopfdaten bleiben erhalten',
   store.holeEingaben(altNeu.id).projekt.bauherr === 'Alt-Bauherr');
 ok('Alt-Bundle: Wandtyp wird beim Import normalisiert',
@@ -1217,7 +1309,19 @@ await $('btn-vorlage-wand').dispatch('click');
 ok('Vorlage oeffnet den bestehenden Import-Dialog', $('imp-overlay').hidden === false);
 ok('Dialog nennt die Vorlage als Quelle',
   $('imp-datei').textContent === 'SEMBLA_Musterwand.json (Repo-Vorlage)');
-ok('Namensvorschlag kommt aus der Vorlage', $('imp-name').value === 'SEMBLA Musterwand (AWG)');
+// Mit Zielgeschoss (das aktive) steht der erzeugte Name im Feld; der Vorlagenname bleibt
+// der freie Vorschlag, wenn es kein Zielgeschoss gibt (s. `ohneZielgeschoss`).
+const mwZiel = impZielName();
+ok('Namensfeld zeigt den erzeugten Namen (Zielgeschoss), nur lesbar',
+  $('imp-name').value === mwZiel && $('imp-name').readOnly === true);
+$('imp-cancel').dispatch('click');
+await ohneZielgeschoss(async () => {
+  await $('btn-vorlage-wand').dispatch('click');
+  ok('Namensvorschlag kommt aus der Vorlage (ohne Zielgeschoss)',
+    $('imp-name').value === 'SEMBLA Musterwand (AWG)' && $('imp-name').readOnly === false);
+  $('imp-cancel').dispatch('click');
+});
+await $('btn-vorlage-wand').dispatch('click');
 ok('Zusammenfassung zeigt die AWG-Maße und den Wandtyp',
   /3000 × 2600 mm/.test(impInfo()) && /Innenwand mit Wind \(Cpi\)/.test(impInfo()));
 ok('vor der Bestaetigung wird NICHTS gespeichert',
@@ -1232,8 +1336,9 @@ await $('btn-vorlage-wand').dispatch('click');
 $('imp-go').dispatch('click');
 const mw = store.aktivesElement();
 ok('Bestaetigung legt genau EIN neues Element an', anzahl() === wAnzahlVor + 1);
-ok('Musterwand ist aktiv und traegt den Vorlagennamen',
-  store.aktivId() === mw.id && mw.id !== wAktivVor && mw.name === 'SEMBLA Musterwand (AWG)');
+ok('Musterwand ist aktiv und traegt den erzeugten Wandnamen (naechste Nummer)',
+  store.aktivId() === mw.id && mw.id !== wAktivVor && mw.name === mwZiel
+  && mw.wandelement.name === mwZiel);
 ok('gespeichertes Wandelement ist die kanonische AWG-Wand',
   mw.wandelement.length_mm === 3000 && mw.wandelement.height_mm === 2600
   && mw.wandelement.tension_columns.length === 13 && mw.wandelement.lagen === 13);
@@ -1241,7 +1346,7 @@ ok('Wandtyp wird beim Import normalisiert', store.WANDTYPEN.includes(mw.wandelem
 ok('bestehendes Element wurde NICHT ueberschrieben',
   JSON.stringify(store.holeElement(wAktivVor)) === vorherAktivStand);
 ok('Erfolgsmeldung nennt Name, Import und den Ort in der Struktur',
-  /SEMBLA Musterwand \(AWG\)/.test(trMsgTxt()) && /importiert/.test(trMsgTxt())
+  trMsgTxt().includes('„' + mwZiel + '“') && /importiert/.test(trMsgTxt())
   && /eingetragen in Geschoss/.test(trMsgTxt()));
 ok('Projekt-Kopfdaten der Vorlage kommen mit',
   store.holeEingaben(mw.id).projekt.name === 'SEMBLA Musterwand (AWG)');
@@ -1564,20 +1669,42 @@ globalThis.fetch = echtesFetch;
     MAPPE.findeGeschoss(store.holeMappe(), gsKrumm).geschoss.name === 'ZG'
     && MAPPE.findeGeschoss(store.holeMappe(), gsKrumm).geschoss.hoehe_mm === null);
 
-  // 8f) Wand-Popup „Bearbeiten": nur der Name, nie die Geometrie ([P-1]) ----
+  // 8f) Wand-Popup „Bearbeiten": seit dem Entscheid vom 03.11.2026 reine Anzeige ----
+  // Der Wandname wird aus Geschosskuerzel und Wandnummer gebildet (`Wand_OG-<Nr>`) und
+  // ist NICHT frei aenderbar; die Geometrie gehoert weiter Modul 1 ([P-1]).
+  const ogName = store.wandVerortung(idOg).wand.name;
+  ok('Wandname: die Wand im OG heisst nach Kuerzel und Gebaeudenummer, nicht nach dem Anlagenamen',
+    /^Wand_OG-\d+$/.test(ogName)
+    && ogName === MAPPE.wandName('OG', store.wandVerortung(idOg).wand.nr)
+    && store.holeElement(idOg).name === ogName && store.holeElement(idOg).wandelement.name === ogName);
   baum('wand-bearbeiten', idOg);
-  ok('#56 Bearbeiten ist reines Umbenennen und verweist auf Modul 1 und den Geschosseditor',
+  ok('#56 Bearbeiten zeigt den Namen nur an und verweist auf Modul 1 und den Geschosseditor',
     /Modul&nbsp;1/.test($('wp-sub').innerHTML) && /Geschosseditor/.test($('wp-sub').innerHTML)
-    && $('btn-neu').hidden === false);
+    && /nicht\s+frei änderbar/.test($('wp-sub').innerHTML)
+    && $('wp-name-zeile').hidden === false && $('f-name').value === ogName
+    && $('wp-titel').textContent === 'Wand: ' + ogName);
   ok('#56 die gespeicherte Geometrie steht dort nur als Anzeige',
     /Länge: 2000 mm/.test($('wp-hinweis').innerHTML) && /Höhe: 2400 mm/.test($('wp-hinweis').innerHTML));
   ok('Bearbeiten blendet die Importwege aus', $('wp-quellen').hidden === true);
-  $('f-name').value = 'Wand OG Nord';
-  $('btn-neu').dispatch('click');
-  ok('[L-4] Umbenennen fuehrt den Anzeigenamen der Mappe mit, Geometrie bleibt',
-    store.holeElement(idOg).name === 'Wand OG Nord'
-    && store.wandVerortung(idOg).wand.name === 'Wand OG Nord'
-    && store.holeElement(idOg).wandelement.height_mm === 2400);
+  $('wp-cancel').dispatch('click');
+  ok('[L-4] Umbenennen einer eingetragenen Wand wird benannt abgewiesen (Speicher und Mappe), nichts aendert sich', (() => {
+    const vorherEl = JSON.stringify(store.holeElement(idOg)), vorherM = JSON.stringify(store.holeMappe());
+    let f1 = null, f2 = null;
+    try { store.umbenennen(idOg, 'Wand OG Nord'); } catch (e) { f1 = e; }
+    try { MAPPE.benenneUm(store.holeMappe(), idOg, 'Wand OG Nord'); } catch (e) { f2 = e; }
+    return !!f1 && /nicht frei änderbar/.test(f1.message) && f1.message.includes(ogName)
+      && !!f2 && /nicht frei änderbar/.test(f2.message)
+      && JSON.stringify(store.holeElement(idOg)) === vorherEl
+      && JSON.stringify(store.holeMappe()) === vorherM
+      && store.holeElement(idOg).wandelement.height_mm === 2400;
+  })());
+  ok('[L-4] auch ein Schreiben mit fremdem Namen ueber store.speichere erzwingt den erzeugten Namen', (() => {
+    const e = store.holeElement(idOg);
+    store.speichere('Wand OG Nord', { ...e.wandelement, name: 'Wand OG Nord' }, idOg);
+    const nach = store.holeElement(idOg);
+    return nach.name === ogName && nach.wandelement.name === ogName
+      && store.wandVerortung(idOg).wand.name === ogName;
+  })());
 
   // 8g) Lage: Abweichung wird gemeldet, nie angeglichen ([L-3]) -------------
   store.verorteWand(idOg, gsNeu, { lage: { start_mm:{ x:250, y:625 }, richtung:'x', laenge_grid: 20 } });
@@ -1616,7 +1743,7 @@ globalThis.fetch = echtesFetch;
     ok('#88 sie ist unbemasst — es entsteht keine Bemassung und keine Fixierung',
       MAPPE.bemassungen(store.holeMappe(), gsNeu).length === 0);
     ok('#88 (must-not) kein Schema-, Mappen- oder Projektformatsprung, Mappe gueltig',
-      store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+      store.SCHEMA_VERSION === 7 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
       && MAPPE.validiereMappe(store.holeMappe()).length === 0);
   }
   // #88: Ohne ableitbare Rasterlaenge wird KEINE Position erfunden — der Grund steht da.
@@ -1633,8 +1760,10 @@ globalThis.fetch = echtesFetch;
   }
   ok('[L-4] verwaister Eintrag wird gemeldet, loescht aber nie ein Wandelement', (() => {
     store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gsNeu, { id:'w-geist', name:'Geist' }));
-    return /Verwaiste Einträge/.test($('tr-warn').innerHTML)
-      && /Geist/.test($('tr-warn').innerHTML) && store.holeElement(idFrei) !== null;
+    // Auch der verwaiste Eintrag traegt den erzeugten Namen (Wand_OG-<Nr>) — benannt wird er damit.
+    const geistName = MAPPE.findeWand(store.holeMappe(), 'w-geist').wand.name;
+    return /^Wand_OG-\d+$/.test(geistName) && /Verwaiste Einträge/.test($('tr-warn').innerHTML)
+      && $('tr-warn').innerHTML.includes(geistName) && store.holeElement(idFrei) !== null;
   })());
   confirmAntwort = true;
   baum('wand-loeschen', 'w-geist');
@@ -1704,8 +1833,11 @@ globalThis.fetch = echtesFetch;
   ok('#85 es kommen GENAU ZWEI getrennte Abfragen — Struktur und Wandelemente',
     confirmFolge.length === 0 && confirmTexte.length === 2);
   ok('#85 die Zusatzfrage nennt Anzahl und Namen VOR dem Loeschen',
+    // Die Wand heisst seit dem Entscheid vom 03.11.2026 `Wand_<Kuerzel>-1` (erste Wand des
+    // Gebaeudes), nicht mehr nach dem beim Anlegen mitgegebenen Namen.
     /1 zugeordnete\(s\) Wandelement\(e\)/.test(confirmTexte[1])
-    && /Wand Süd 1/.test(confirmTexte[1]));
+    && /^Wand_[A-Z0-9]{1,2}-1$/.test(store.holeElement(idB).name)
+    && confirmTexte[1].includes(store.holeElement(idB).name));
   ok('[L-4] Projekt entfernt, Wandelemente bleiben erhalten',
     projekte().length === anzahlPrjVor - 1 && store.listeElemente().length === elementeVor
     && store.holeElement(idB) !== null);
@@ -2058,6 +2190,14 @@ globalThis.fetch = echtesFetch;
       breite_px: datei._w, hoehe_px: datei._h,
       mm_je_pixel: null, versatz_x_mm: 0, versatz_y_mm: 0 });
   }
+  // Die Wandnamen sind erzeugt (Entscheid 03.11.2026): je Gebaeude fortlaufend, das Kuerzel
+  // vom Geschoss — die beim Anlegen mitgegebenen „EG-W01“/„OG-W01“ zaehlen nicht.
+  const nameEg = MAPPE.findeWand(store.holeMappe(), wEg).wand.name;
+  const nameOg = MAPPE.findeWand(store.holeMappe(), wOg).wand.name;
+  ok('[L-13] die Archivwaende tragen die erzeugten Namen (Kuerzel + Gebaeudenummer)',
+    nameEg === MAPPE.wandName(MAPPE.findeGeschoss(store.holeMappe(), gsEg).geschoss.kuerzel, 1)
+    && nameOg === 'Wand_OG-2' && store.holeElement(wEg).name === nameEg
+    && store.holeElement(wOg).wandelement.name === nameOg);
   ok('[L-13] Ausgangsstand steht: 2 Geschosse, 2 Waende, 2 Planbilder',
     MAPPE.alleWaende(store.holeMappe()).length === 2
     && !!(await PLAN.holePlan(gsEg)) && !!(await PLAN.holePlan(gsOg)));
@@ -2166,7 +2306,7 @@ globalThis.fetch = echtesFetch;
   await warte();
   ok('[L-13] vorhandene Kennungen werden als Konflikt gemeldet',
     $('arc-ueber-box').hidden === false && $('arc-ueber').checked === false
-    && /EG-W01/.test($('arc-ueber-text').textContent));
+    && $('arc-ueber-text').textContent.includes(nameEg));
   const standVorKonflikt = vergleich();
   $('arc-go').dispatch('click');
   await warte();
@@ -2315,7 +2455,7 @@ globalThis.fetch = echtesFetch;
     && /Projekt-ZIP des zentralen Exports/.test($('arc-bericht').innerHTML)
     && /Archivprojekt/.test($('arc-bericht').innerHTML)
     && /Geschosse \(2\)/.test($('arc-bericht').innerHTML)
-    && /EG-W01/.test($('arc-bericht').innerHTML) && /OG-W01/.test($('arc-bericht').innerHTML)
+    && $('arc-bericht').innerHTML.includes(nameEg) && $('arc-bericht').innerHTML.includes(nameOg)
     && /kat-nichtdabei/.test($('arc-bericht').innerHTML)
     && $('arc-go').disabled === false);
   $('arc-go').dispatch('click');
@@ -2940,10 +3080,14 @@ globalThis.fetch = echtesFetch;
   confirmAntwort = true;
   $('exp-overlay')._sel = [{ value: 'waende' }];
   $('exp-go').dispatch('click');
+  // Benannt wird der Eintrag mit seinem ERZEUGTEN Namen (Entscheid 03.11.2026) — auch ein
+  // verwaister Eintrag bekommt `Wand_<Kuerzel>-<Nr>`, „Verschwundene Wand“ zaehlt nicht.
+  const wegName = MAPPE.findeWand(store.holeMappe(), 'w-weg').wand.name;
   ok('#67 fehlendes Wandelement: ZIP ohne die Wand, Meldung nennt sie ([L-4])',
-    zipCalls.length === 1 && zipCalls[0].files.length === 2
-    && zipCalls[0].files.every(f => !/Verschwundene/.test(f.name))
-    && /Verschwundene Wand/.test(trMsgTxt()) && /L-4/.test(trMsgTxt()) && trFehler());
+    /^Wand_[A-Z0-9]{1,2}-\d+$/.test(wegName)
+    && zipCalls.length === 1 && zipCalls[0].files.length === 2
+    && zipCalls[0].files.every(f => !f.name.includes(ARCHIV.sicherStamm(wegName)) && !f.name.includes('w-weg'))
+    && trMsgTxt().includes(wegName) && /L-4/.test(trMsgTxt()) && trFehler());
   confirmAntwort = false;
   store.setzeMappe(MAPPE.entferneWand(store.holeMappe(), 'w-weg'));
 
@@ -3071,17 +3215,24 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   })();
   store.setzeAktivesGeschoss(gsEg101);
 
-  /** Wand anlegen und (optional) einem Geschoss zuordnen — echter Pfad, feste id. */
-  const wand101 = async (id, name, gs) => {
-    store.speichere(name, { name }, id);
-    if (gs) store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gs, { id, name }));
+  /**
+   * Wand anlegen und (optional) einem Geschoss zuordnen — echter Pfad, feste id. Seit dem
+   * Entscheid vom 03.11.2026 heisst eine eingetragene Wand `Wand_<Kuerzel>-<Nr>`; damit die
+   * natuerliche Sortierung an einer ZWEISTELLIGEN Nummer pruefbar bleibt, wird die Nummer
+   * hier ausdruecklich gesetzt (`nr` ist ein Mappenfeld, gueltige Nummern bleiben stehen).
+   * Eine nicht eingetragene Wand behaelt ihren freien Namen `frei`.
+   */
+  const wand101 = async (id, gs, nr, frei) => {
+    store.speichere(frei || 'vorlaeufig', { name: frei || 'vorlaeufig' }, id);
+    if (gs) store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gs, { id, nr }));
     await warte();
     return id;
   };
   // Anlagereihenfolge 1 -> 2 -> 10: im Storage steht danach 10, 2, 1 (neueste zuerst).
-  await wand101('w101-1',  'Wand 1',  gsEg101);
-  await wand101('w101-2',  'Wand 2',  gsEg101);
-  await wand101('w101-10', 'Wand 10', gsEg101);
+  await wand101('w101-1',  gsEg101, 1);
+  await wand101('w101-2',  gsEg101, 2);
+  await wand101('w101-10', gsEg101, 10);
+  const EG3 = 'Wand_EG-1,Wand_EG-2,Wand_EG-10';
 
   /** Die sichtbare Reihenfolge des Dropdowns: [{id, name, aktiv}]. */
   const optionen101 = () => [...String($('sb-active').innerHTML)
@@ -3092,56 +3243,64 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   const speicher101 = () => store.listeElemente().map(e => e.name).join(',');
 
   mountNavbar(0);
-  ok('#101 das Dropdown sortiert natuerlich: Wand 1, Wand 2, Wand 10',
-    namen101() === 'Wand 1,Wand 2,Wand 10');
+  ok('#101 die erzeugten Namen tragen Kuerzel und Wandnummer (Ausgangslage)',
+    store.holeElement('w101-10').name === 'Wand_EG-10'
+    && store.holeElement('w101-10').wandelement.name === 'Wand_EG-10'
+    && MAPPE.findeWand(store.holeMappe(), 'w101-10').wand.nr === 10);
+  ok('#101 das Dropdown sortiert natuerlich: Wand_EG-1, Wand_EG-2, Wand_EG-10',
+    namen101() === EG3);
   ok('#101 Gegenprobe: der Storage liefert dabei die umgekehrte Reihenfolge (neueste zuerst)',
-    speicher101() === 'Wand 10,Wand 2,Wand 1');
+    speicher101() === 'Wand_EG-10,Wand_EG-2,Wand_EG-1');
 
   // (b) Auswahl aendert die Reihenfolge nicht — geprueft auf dem automatischen Neuaufbau
   // ueber store.abonniere UND auf einem frischen Mount.
   let stabilAuswahl = true, markiert = true;
   for (const id of ['w101-10', 'w101-1', 'w101-2', 'w101-10']) {
     store.setzeAktiv(id);                                   // loest den echten Neuaufbau aus
-    if (namen101() !== 'Wand 1,Wand 2,Wand 10') stabilAuswahl = false;
+    if (namen101() !== EG3) stabilAuswahl = false;
     if (optionen101().filter(o => o.aktiv).map(o => o.id).join(',') !== id) markiert = false;
     mountNavbar(0);
-    if (namen101() !== 'Wand 1,Wand 2,Wand 10') stabilAuswahl = false;
+    if (namen101() !== EG3) stabilAuswahl = false;
   }
   ok('#101 ein Wechsel der aktiven Wand veraendert die sichtbare Reihenfolge nicht',
     stabilAuswahl);
   ok('#101 markiert ist dabei immer genau die aktive Wand', markiert);
 
   // (c) Bearbeitung mit neuem Zeitstempel: der Storage ordnet um, das Dropdown nicht.
+  // Mitgegeben wird bewusst ein veralteter freier Name — er setzt sich nicht durch.
   await warte();
   store.speichere('Wand 2', { name: 'Wand 2', bearbeitet: true }, 'w101-2');
   mountNavbar(0);
   ok('#101 die Bearbeitung wandert im Storage nach vorn — Gegenprobe',
-    speicher101() === 'Wand 2,Wand 10,Wand 1');
+    speicher101() === 'Wand_EG-2,Wand_EG-10,Wand_EG-1');
   ok('#101 trotz geaenderter Speicherreihenfolge bleibt die Sichtreihenfolge gleich',
-    namen101() === 'Wand 1,Wand 2,Wand 10');
+    namen101() === EG3);
 
   // (d) Die Filterung nach [L-10] bleibt unveraendert: fremdes Geschoss NEIN,
   // unverortet JA — und die unverortete Wand wird mitsortiert, nicht angehaengt.
-  await wand101('w101-3', 'Wand 3', gsOg101);               // fremdes Geschoss
-  await wand101('w101-0', 'Wand 0', null);                  // unverortet
+  await wand101('w101-3', gsOg101, 3);                      // fremdes Geschoss
+  await wand101('w101-0', null, null, 'Wand 0');            // unverortet, freier Name
   mountNavbar(0);
   ok('#101 Filterung erhalten: unverortete Wand dabei, Wand des fremden Geschosses nicht',
-    namen101() === 'Wand 0,Wand 1,Wand 2,Wand 10'
+    namen101() === 'Wand 0,' + EG3
     && !ids101().includes('w101-3')
+    && store.holeElement('w101-3').name === 'Wand_OG-3'
     && store.listeElemente().some(e => e.id === 'w101-3'));
 
   // (e) Gleiche sichtbare Namen: der Stich ist die unveraenderliche id, nicht die Zeit.
-  await wand101('w101-b', 'Wand 7', gsEg101);
-  await wand101('w101-a', 'Wand 7', gsEg101);
+  // Eingetragene Waende eines Gebaeudes heissen nie gleich — gleich heissen kann aber eine
+  // NICHT eingetragene Wand mit freiem Namen und eine eingetragene.
+  await wand101('w101-b', gsEg101, 7);
+  await wand101('w101-a', null, null, 'Wand_EG-7');
   mountNavbar(0);
-  const gleich1 = optionen101().filter(o => o.name === 'Wand 7').map(o => o.id).join(',');
+  const gleich1 = optionen101().filter(o => o.name === 'Wand_EG-7').map(o => o.id).join(',');
   await warte();
-  store.speichere('Wand 7', { name: 'Wand 7' }, 'w101-b');  // Zeitstempel der spaeteren id
+  store.speichere('Wand_EG-7', { name: 'Wand_EG-7' }, 'w101-b');  // Zeitstempel der spaeteren id
   mountNavbar(0);
-  const gleich2 = optionen101().filter(o => o.name === 'Wand 7').map(o => o.id).join(',');
+  const gleich2 = optionen101().filter(o => o.name === 'Wand_EG-7').map(o => o.id).join(',');
   ok('#101 gleiche Namen sind ueber die stabile id eindeutig geordnet',
     gleich1 === 'w101-a,w101-b' && gleich2 === gleich1
-    && namen101() === 'Wand 0,Wand 1,Wand 2,Wand 7,Wand 7,Wand 10');
+    && namen101() === 'Wand 0,Wand_EG-1,Wand_EG-2,Wand_EG-7,Wand_EG-7,Wand_EG-10');
 
   // (f) Nicht-Ziel: der Storage bleibt unberuehrt — Zusage „neueste zuerst" gilt weiter,
   // und kein Name/keine id/kein Zeitstempel wurde umgeschrieben.
@@ -3151,8 +3310,9 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
     && roh101[0].id === 'w101-b');
   ok('#101 Namen und ids sind unveraendert geblieben',
     roh101.filter(e => e.id.startsWith('w101-')).length === 7
-    && store.holeElement('w101-10').name === 'Wand 10'
-    && store.holeElement('w101-0').name === 'Wand 0');
+    && store.holeElement('w101-10').name === 'Wand_EG-10'
+    && store.holeElement('w101-0').name === 'Wand 0'
+    && store.holeElement('w101-a').name === 'Wand_EG-7');
 
   document.querySelector = alt101Query;
   globalThis.localStorage = alt101Storage;
@@ -3177,6 +3337,13 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   // nach dem Import einer Mappe ohne die zugehoerige Wanddatei entsteht.
   store.setzeMappe(MAPPE.setzeWand(store.projektMappe(zpdfPrjId), zpdfEG,
     { id: 'w98-verwaist', name: 'Wand PDF verwaist', lage: null }));
+  // Seit dem Entscheid vom 03.11.2026 tragen alle drei Eintraege den ERZEUGTEN Namen
+  // `Wand_<Kuerzel>-<Nr>` (Gebaeudenummer in Eintragsreihenfolge) — auch der verwaiste.
+  const nm98 = (id) => MAPPE.findeWand(store.projektMappe(zpdfPrjId), id).wand.name;
+  const nA = nm98(wA), nB = nm98(wB), nV = nm98('w98-verwaist');
+  ok('#98 Ausgangslage: die Wandnamen sind erzeugt und in Eintragsreihenfolge nummeriert',
+    nA === 'Wand_G1-1' && nB === 'Wand_G1-2' && nV === 'Wand_G1-3'
+    && store.holeElement(wA).name === nA && store.holeElement(wB).wandelement.name === nB);
 
   ok('#107 die Baumliste hat KEINE eigene Schaltflaeche fuer den Zeichnungsexport mehr',
     !/data-act="prj-zeichnungen"/.test($('tr-baum').innerHTML)
@@ -3206,7 +3373,7 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   confirmFolge = [false];
   await zpdfLauf();
   ok('#98 der verwaiste Eintrag wird vor dem Download namentlich benannt ([L-4])',
-    confirmTexte.length === 1 && /Wand PDF verwaist/.test(confirmTexte[0])
+    confirmTexte.length === 1 && confirmTexte[0].includes(nV)
     && /NICHT vollständig/.test(confirmTexte[0]));
   ok('#98 „Nein" laedt nichts herunter und sagt das',
     zipCalls.length === vorAbbruch && trFehler() && /abgebrochen/i.test(trMsgTxt()));
@@ -3249,9 +3416,10 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   const tEG = titel(eg);
   ok('#98 Seite 1 ist der Lageplan, danach folgt je Wand genau ein Blatt',
     tEG.length === 3 && /Lageplan/.test(tEG[0])
-    && /Wand PDF A/.test(tEG[1]) && /Wand PDF B/.test(tEG[2]));
+    && tEG[1].includes(nA) && tEG[2].includes(nB));
   ok('#98 die Wandfolge ist die stabile Reihenfolge der Projektmappe',
-    tEG.slice(1).join(' < ').indexOf('Wand PDF A') < tEG.slice(1).join(' < ').indexOf('Wand PDF B'));
+    tEG.slice(1).join(' < ').indexOf(nA) >= 0
+    && tEG.slice(1).join(' < ').indexOf(nA) < tEG.slice(1).join(' < ').indexOf(nB));
   ok('#98 der Lageplan des leeren Geschosses steht als einziges Blatt darin',
     titel(og).length === 1 && /Lageplan/.test(titel(og)[0]));
 
@@ -3267,8 +3435,13 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
     !!wandSeite && wandSeite.blatt_mm.w === 400 && wandSeite.blatt_mm.h === 277
     && wandSeite.rand_mm === 10 && wandSeite.papier_mm.w === 420);
   const lpSeite = zpdfSeiten.find(x => x.art === 'lageplan');
-  ok('#98 gerendert wird das vollstaendige Lageplanblatt (Wandtabelle und Legende dabei)',
-    !!lpSeite && /Wände im Geschoss/.test(svgVon(lpSeite)) && /Darstellung/.test(svgVon(lpSeite)));
+  // Die Wandtabelle „Wände im Geschoss" ist mit dem Entscheid vom 03.11.2026 ersatzlos
+  // entfallen; die Legende erklaert die Nummernblase als feste Wandnummer.
+  ok('#98 gerendert wird das vollstaendige Lageplanblatt (Legende dabei, KEINE Wandtabelle mehr)',
+    !!lpSeite && /Darstellung/.test(svgVon(lpSeite))
+    && !/Wände im Geschoss/.test(svgVon(lpSeite))
+    && /Nummernblase: feste Wandnummer/.test(svgVon(lpSeite))
+    && /Wand_&lt;Geschosskürzel&gt;-&lt;Nummer&gt;/.test(svgVon(lpSeite)));
   ok('#98/#107 jedes gerasterte Blatt ist selbstgenuegsam — kein foreignObject, kein externer Verweis',
     zpdfSeiten.length === 4 && zpdfSeiten.every(seite => {
       const svg = svgVon(seite);
@@ -3294,7 +3467,7 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   zpdfFehlerAb = null;
   ok('#98 ein nicht darstellbares Blatt bricht den Lauf sichtbar ab, ohne Download',
     zipCalls.length === vorFehler && trFehler()
-    && /fehlgeschlagen/.test(trMsgTxt()) && /Wand PDF B/.test(trMsgTxt()));
+    && /fehlgeschlagen/.test(trMsgTxt()) && trMsgTxt().includes(nB));
 
   confirmFolge = [];
 }
@@ -3338,7 +3511,9 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
     nameVon('prj-loeschen', prjAX.projekt.id) === 'Projekt AX-Prüfprojekt löschen');
   ok('#144 auch Geschoss- und Wandaktionen sind eindeutig benannt',
     nameVon('gs-loeschen', gsAX) === 'Geschoss EG löschen'
-    && nameVon('wand-loeschen', idAX) === 'Wand AX-Wand in Geschoss EG löschen');
+    // Der Wandname ist erzeugt (Entscheid 03.11.2026): erste Wand des Gebaeudes im EG.
+    && store.holeElement(idAX).name === 'Wand_EG-1'
+    && nameVon('wand-loeschen', idAX) === 'Wand Wand_EG-1 in Geschoss EG löschen');
   ok('#144 gleiche Wandnamen bleiben unterscheidbar — der Name nennt das Geschoss, nicht die Kennung',
     !/aria-label="[^"]*w-[0-9a-z]/i.test(bh()));
   ok('#144 die Erklaerung steht als eigene Beschreibung da, nicht im Namen',
@@ -3429,6 +3604,120 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   ok('#145 Meldezeilen der Dialoge sind als Statusbereich ausgezeichnet',
     ['tr-msg','pp-msg','gp-msg','msg','imp-msg','pi-msg','arc-msg']
       .every(id => new RegExp('id="' + id + '" role="status" aria-live="polite"').test(html)));
+}
+
+// ==========================================================================
+//  Wandnamen als eindeutige Wandnummer je Gebaeude (Entscheid 03.11.2026)
+// ==========================================================================
+// Geprueft am ECHTEN Modul-0-Pfad: Pflichtfeld „Kuerzel" im Geschossdialog (Vorschlag,
+// benannte Abweisung), Kuerzelaenderung benennt die Waende um (Nummern bleiben), und
+// „Wandnummern neu berechnen…" im Projektdialog — erst nach ausdruecklicher Bestaetigung.
+{
+  confirmFolge = []; confirmAntwort = false;
+  const kPrj = await projektAnlegen('Kürzelprojekt');
+  const kPid = kPrj.projekt.id;
+  const kGeb = kPrj.gebaeude[0].id;
+  const gsG1 = store.aktivesGeschossId();
+  const kM = () => store.projektMappe(kPid);
+  const kGs = (id) => MAPPE.findeGeschoss(kM(), id).geschoss;
+  ok('Kuerzel: das Standardgeschoss der Projektanlage bekommt sein Kuerzel aus der Bezeichnung',
+    kGs(gsG1).kuerzel === 'G1');
+
+  // (a) Anlegen: Vorschlag aus der Bezeichnung, solange man das Feld nicht selbst anfasst.
+  const gsAnzahl = () => MAPPE.alleGeschosse(kM()).length;
+  const gsVor = gsAnzahl();
+  baum('gs-neu', kPid);
+  $('gp-name').value = 'Erdgeschoss'; $('gp-name').dispatch('input');
+  ok('Kuerzel: beim Anlegen wird es aus der Bezeichnung vorgeschlagen (Erdgeschoss -> EG)',
+    $('gp-overlay').hidden === false && $('gp-kuerzel').value === 'EG'
+    && /id="gp-kuerzel"/.test(html) && /Kürzel \(Pflicht\)/.test(html));
+  // Leer ist Pflichtverstoss — benannt abgewiesen, Dialog bleibt offen, nichts gespeichert.
+  $('gp-kuerzel').value = ''; $('gp-kuerzel').dispatch('input');
+  $('gp-speichern').dispatch('click');
+  ok('Kuerzel: leer wird benannt abgewiesen, der Dialog bleibt offen, nichts gespeichert',
+    $('gp-overlay').hidden === false && $('gp-msg').className === 'msg err'
+    && /Geschosskürzel fehlt/.test($('gp-msg').textContent) && gsAnzahl() === gsVor);
+  $('gp-kuerzel').value = 'E-G'; $('gp-kuerzel').dispatch('input');
+  $('gp-speichern').dispatch('click');
+  const msgUngueltig = $('gp-msg').textContent;
+  $('gp-kuerzel').value = 'g1'; $('gp-kuerzel').dispatch('input');
+  $('gp-speichern').dispatch('click');
+  const msgDoppelt = $('gp-msg').textContent;
+  ok('Kuerzel: unzulaessig und im Gebaeude doppelt werden je benannt abgewiesen, nie zurechtgebogen',
+    /„E-G“ ist unzulässig/.test(msgUngueltig) && /„G1“ ist in diesem Gebäude schon vergeben/.test(msgDoppelt)
+    && $('gp-overlay').hidden === false && gsAnzahl() === gsVor);
+  // Ein selbst gesetztes Kuerzel bleibt stehen, auch wenn sich die Bezeichnung danach aendert.
+  $('gp-kuerzel').value = 'eg'; $('gp-kuerzel').dispatch('input');
+  $('gp-name').value = 'Halle'; $('gp-name').dispatch('input');
+  const nachHand = $('gp-kuerzel').value;
+  $('gp-speichern').dispatch('click');
+  const gsE = MAPPE.alleGeschosse(kM()).map(x => x.geschoss).find(g => g.name === 'Halle');
+  ok('Kuerzel: ein selbst gesetztes Kuerzel ueberschreibt der Vorschlag nicht; gespeichert normalisiert',
+    nachHand === 'eg' && $('gp-overlay').hidden === true && gsAnzahl() === gsVor + 1
+    && !!gsE && gsE.kuerzel === 'EG' && /Kürzel EG/.test(trMsgTxt()));
+
+  // (b) Waende bekommen Wand_<Kuerzel>-<Nr> mit der Nummer des GEBAEUDES.
+  const k1 = wandAnlegen(gsE.id, { name: 'egal 1' });
+  const k2 = wandAnlegen(gsE.id, { name: 'egal 2' });
+  store.setzeAktivesGeschoss(gsG1);
+  const k3 = wandAnlegen(gsG1, { name: 'egal 3' });
+  const kName = (id) => store.holeElement(id).name;
+  ok('Wandnummer: je Gebaeude fortlaufend, das Kuerzel vom Geschoss',
+    kName(k1) === 'Wand_EG-1' && kName(k2) === 'Wand_EG-2' && kName(k3) === 'Wand_G1-3'
+    && MAPPE.findeGebaeude(kM(), kGeb).wand_nr_max === 3);
+
+  // (c) Kuerzelaenderung am echten Dialog: die Waende heissen um, ihre Nummern bleiben.
+  baum('gs-bearbeiten', gsE.id);
+  ok('Kuerzel: der Bearbeiten-Dialog zeigt das gespeicherte Kuerzel', $('gp-kuerzel').value === 'EG');
+  $('gp-kuerzel').value = 'G1'; $('gp-kuerzel').dispatch('input');
+  $('gp-speichern').dispatch('click');
+  ok('Kuerzel: auch beim Bearbeiten wird ein doppeltes Kuerzel benannt abgewiesen, nichts benannt um',
+    $('gp-overlay').hidden === false && /schon vergeben/.test($('gp-msg').textContent)
+    && kGs(gsE.id).kuerzel === 'EG' && kName(k1) === 'Wand_EG-1');
+  $('gp-kuerzel').value = 'E1'; $('gp-kuerzel').dispatch('input');
+  $('gp-speichern').dispatch('click');
+  ok('Kuerzel: die Aenderung benennt alle Waende des Geschosses um — Nummern bleiben',
+    $('gp-overlay').hidden === true && kGs(gsE.id).kuerzel === 'E1'
+    && kName(k1) === 'Wand_E1-1' && kName(k2) === 'Wand_E1-2'
+    && store.holeElement(k2).wandelement.name === 'Wand_E1-2'
+    && MAPPE.findeWand(kM(), k1).wand.nr === 1 && MAPPE.findeWand(kM(), k2).wand.nr === 2
+    && kName(k3) === 'Wand_G1-3' && /heißen jetzt Wand_E1-/.test(trMsgTxt()));
+
+  // (d) Eine geloeschte Nummer bleibt eine Luecke — nichts rueckt nach.
+  confirmFolge = [];
+  store.loesche(k1);
+  ok('Wandnummer: nach dem Loeschen rueckt nichts nach, die naechste Nummer ist 4',
+    kName(k2) === 'Wand_E1-2' && kName(k3) === 'Wand_G1-3'
+    && MAPPE.naechsteWandNr(kM(), kGeb) === 4);
+
+  // (e) „Wandnummern neu berechnen…" im Projektdialog — nur nach Bestaetigung.
+  baum('prj-bearbeiten', kPid);
+  ok('Wandnummern: der Projektdialog zeigt Zaehler und Aktion je Gebaeude',
+    $('pp-nummern').hidden === false
+    && $('pp-nummern-liste').innerHTML.includes(`data-pp-nummern="${kGeb}"`)
+    && /höchste vergebene Nummer 3/.test($('pp-nummern-liste').innerHTML));
+  const klickNummern = () => $('pp-nummern-liste').dispatch('click', { target: { closest:
+    (sel) => sel === 'button[data-pp-nummern]' ? { dataset: { ppNummern: kGeb } } : null } });
+  const kStand = () => JSON.stringify([kM(), store.listeElemente()]);
+  const vorNein = kStand();
+  confirmTexte.length = 0;
+  confirmFolge = [false];
+  klickNummern();
+  ok('Wandnummern: „Nein" in der Rueckfrage aendert nichts und sagt das',
+    confirmFolge.length === 0 && confirmTexte.length === 1 && /ACHTUNG/.test(confirmTexte[0])
+    && kStand() === vorNein && /Abgebrochen/.test($('pp-msg').textContent));
+  confirmFolge = [true];
+  klickNummern();
+  ok('Wandnummern: „Ja" nummeriert lueckenlos neu (Geschoss fuer Geschoss), Zaehler gesetzt, Namen folgen',
+    confirmFolge.length === 0
+    && MAPPE.findeWand(kM(), k3).wand.nr === 1 && MAPPE.findeWand(kM(), k2).wand.nr === 2
+    && kName(k3) === 'Wand_G1-1' && kName(k2) === 'Wand_E1-2'
+    && store.holeElement(k3).wandelement.name === 'Wand_G1-1'
+    && MAPPE.findeGebaeude(kM(), kGeb).wand_nr_max === 2 && MAPPE.naechsteWandNr(kM(), kGeb) === 3
+    && /höchste vergebene Nummer 2/.test($('pp-nummern-liste').innerHTML)
+    && /neu berechnet/.test($('pp-msg').textContent));
+  $('pp-cancel').dispatch('click');
+  confirmFolge = []; confirmAntwort = false;
 }
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }

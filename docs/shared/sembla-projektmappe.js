@@ -48,6 +48,24 @@
  * ausschliesst. Geprueft wird hier nur die STRUKTUR (`mengenFehler`), verrechnet
  * und gemeldet wird ausschliesslich in `sembla-gesamtstueckliste.js`.
  *
+ * Seit dem Auftrag „Wandnamen als eindeutige Wandnummer je Gebaeude“ (Entscheid
+ * Felix/Tibor 03.11.2026) ist der Wandname KEIN freies Feld mehr, sondern wird aus
+ * zwei Angaben der Mappe erzeugt:
+ *
+ *   geschoss.kuerzel   = "EG"          // 1–2 Zeichen A–Z/0–9, je Gebaeude eindeutig
+ *   wand.nr            = 12            // ganze Zahl ab 1, je GEBAEUDE eindeutig
+ *   gebaeude.wand_nr_max = 14          // hoechste je vergebene Nummer (Zaehler)
+ *   wand.name          = "Wand_EG-12"  // immer `wandName(kuerzel, nr)`, nie frei
+ *
+ * Nummern werden nie wieder vergeben und nichts rueckt nach: eine neue Wand bekommt
+ * `wand_nr_max + 1`, eine geloeschte Nummer bleibt eine Luecke. Beim Verschieben
+ * innerhalb des Gebaeudes bleibt die Nummer (nur das Kuerzel im Namen wechselt).
+ * Vergeben, repariert (doppelt/fehlend) und benannt wird an GENAU EINER Stelle —
+ * `_nummeriereGebaeude` in `normMappe` —, damit jeder Schreib- und Leseweg dieselbe
+ * Antwort gibt. Alle Felder sind OPTIONAL und abwaertskompatibel — KEIN Formatbump:
+ * fehlt ein Kuerzel, wird es aus der Geschossbezeichnung vorbelegt
+ * (`kuerzelVorschlag`), fehlt eine Nummer, wird sie in Mappenreihenfolge vergeben.
+ *
  * Dieses Modul ist REIN und DOM-frei (keine Datei-, keine localStorage-, keine
  * DOM-Zugriffe). Alle Struktur-Operationen liefern eine NEUE Mappe zurueck und
  * veraendern die uebergebene nicht. Persistenz und aktive Zeiger liegen in
@@ -93,6 +111,149 @@ export const KOPFDATEN_FELDER = /** @type {ReadonlyArray<string>} */ ([
   "bauherr", "planverfasser", "phase", "plan_nr", "index", "gez",
 ]);
 
+// --- Geschosskuerzel und Wandnummer -----------------------------------------
+
+/** Zulaessiges Geschosskuerzel: 1–2 Zeichen, Grossbuchstaben oder Ziffern. */
+export const KUERZEL_MUSTER = /^[A-Z0-9]{1,2}$/;
+
+/** Praefix des erzeugten Wandnamens. */
+export const WANDNAME_PRAEFIX = "Wand_";
+
+/**
+ * Der Wandname — IMMER aus Geschosskuerzel und Wandnummer erzeugt, nie frei.
+ * @param {string} kuerzel @param {number} nr @returns {string} z. B. „Wand_EG-12“
+ */
+export function wandName(kuerzel, nr) {
+  return `${WANDNAME_PRAEFIX}${kuerzel}-${nr}`;
+}
+
+/** Kuerzel normalisieren (getrimmt, Grossbuchstaben); leer = null. @param {any} k */
+export function normKuerzel(k) {
+  if (k == null) return null;
+  const s = String(k).trim().toUpperCase();
+  return s ? s : null;
+}
+
+/**
+ * Fehler eines Geschosskuerzels — leer = zulaessig. Geprueft werden Pflicht, Form und
+ * Eindeutigkeit im Gebaeude; ein Verstoss wird BENANNT abgewiesen, nie zurechtgebogen.
+ * @param {any} kuerzel @param {Iterable<string>} [belegt] Kuerzel der ANDEREN Geschosse
+ * @param {string} [bezeichnung] Geschossname fuer die Meldung
+ * @returns {string[]}
+ */
+export function kuerzelFehler(kuerzel, belegt, bezeichnung) {
+  const wo = bezeichnung ? `Geschoss „${bezeichnung}“: ` : "";
+  const k = normKuerzel(kuerzel);
+  if (!k) return [`${wo}Das Geschosskürzel fehlt — es ist Pflicht (1–2 Zeichen, z. B. EG, OG, E1).`];
+  if (!KUERZEL_MUSTER.test(k)) {
+    return [`${wo}Geschosskürzel „${k}“ ist unzulässig — erlaubt sind 1–2 Zeichen aus `
+      + "Großbuchstaben A–Z und Ziffern 0–9 (z. B. EG, OG, DG, E1, U1)."];
+  }
+  if (belegt && new Set(belegt).has(k)) {
+    return [`${wo}Geschosskürzel „${k}“ ist in diesem Gebäude schon vergeben — es muss je Gebäude eindeutig sein.`];
+  }
+  return [];
+}
+
+/** Umlaute/ß fuer die Ableitung auf A–Z abbilden; alles andere ausser A–Z/0–9 faellt weg. */
+function _alnum(s) {
+  return String(s == null ? "" : s).toUpperCase()
+    .replace(/Ä/g, "A").replace(/Ö/g, "O").replace(/Ü/g, "U").replace(/ß/g, "S")
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+/** Bekannte Geschossbezeichnungen → Kuerzel (vor der allgemeinen Ableitung). */
+const KUERZEL_BEKANNT = [
+  { muster: /erdgeschoss|\beg\b/i, kuerzel: "EG" },
+  { muster: /obergeschoss|\bog\b/i, kuerzel: "OG" },
+  { muster: /dachgeschoss|\bdg\b/i, kuerzel: "DG" },
+  { muster: /untergeschoss|\bug\b/i, kuerzel: "UG" },
+  { muster: /keller|\bkg\b/i, kuerzel: "KG" },
+];
+
+/**
+ * Kuerzel-VORSCHLAG aus einer Geschossbezeichnung — nur fuer Bestand ohne Kuerzel und
+ * als Vorbelegung im Dialog. Deterministisch und im Gebaeude eindeutig gemacht:
+ *  - bekannte Muster: „EG“/„Erdgeschoss“ → EG, „OG“ → OG, „DG“, „UG“, „KG“/„Keller“;
+ *    mit einstelliger Zahl dazu Buchstabe + Ziffer („1. OG“ → O1, „UG 2“ → U2);
+ *  - sonst Anfangsbuchstabe + einstellige Zahl („Geschoss 1“ → G1), sonst die ersten
+ *    zwei Zeichen („Halle“ → HA);
+ *  - ist der Vorschlag vergeben: Anfangsbuchstabe (bei bekanntem Muster dessen
+ *    Buchstabe) + 1…9, dann + A…Z, dann der erste freie Zweizeichner.
+ * @param {string} name @param {Iterable<string>} [belegt] @returns {string}
+ */
+export function kuerzelVorschlag(name, belegt) {
+  const frei = (k) => KUERZEL_MUSTER.test(k) && !besetzt.has(k);
+  const besetzt = new Set(belegt || []);
+  const text = String(name == null ? "" : name);
+  const zahl = (text.match(/\d+/) || [""])[0];
+  const ziffer = /^[1-9]$/.test(zahl) ? zahl : "";
+  /** @type {string[]} */
+  const kandidaten = [];
+  const bekannt = KUERZEL_BEKANNT.find((b) => b.muster.test(text));
+  if (bekannt) {
+    if (ziffer) kandidaten.push(bekannt.kuerzel[0] + ziffer);
+    kandidaten.push(bekannt.kuerzel);
+  }
+  const zeichen = _alnum(text);
+  const buchstabe = (zeichen.match(/[A-Z]/) || ["G"])[0];
+  // Ein bekanntes Muster bleibt bei seinem Buchstaben („EG“ belegt → E1, nicht „ER“).
+  if (!bekannt) {
+    if (ziffer) kandidaten.push(buchstabe + ziffer);
+    if (zeichen.length >= 2) kandidaten.push(zeichen.slice(0, 2));
+    else if (zeichen.length === 1) kandidaten.push(zeichen);
+  }
+  const erster = bekannt ? bekannt.kuerzel[0] : buchstabe;
+  for (const z of "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") kandidaten.push(erster + z);
+  for (const k of kandidaten) if (frei(k)) return k;
+  const alle = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  for (const a of alle) for (const b of alle) if (frei(a + b)) return a + b;
+  for (const a of alle) if (frei(a)) return a;
+  throw new Error("Kein freies Geschosskürzel mehr in diesem Gebäude.");
+}
+
+/** Wandnummer normalisieren: ganze Zahl ab 1, sonst null (dann wird neu vergeben). */
+function _normNr(v) {
+  if (typeof v !== "number" && typeof v !== "string") return null;
+  if (v === "") return null;
+  const n = +v;
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+/**
+ * Kuerzel, Wandnummern und Wandnamen EINES (normalisierten) Gebaeudes herstellen —
+ * die eine Stelle, an der vergeben wird. Veraendert `g` an Ort und Stelle.
+ *  1. Fehlende Kuerzel werden aus der Bezeichnung vorgeschlagen (vorhandene bleiben
+ *     reserviert, auch ein unzulaessiges — das meldet `validiereMappe`).
+ *  2. Gueltige Nummern bleiben; fehlende und DOPPELTE (die zweite in
+ *     Mappenreihenfolge) bekommen die naechste Nummer. Der Zaehler steigt nur.
+ *  3. Jede Wand mit Nummer heisst `wandName(kuerzel, nr)`.
+ * @param {any} g
+ */
+function _nummeriereGebaeude(g) {
+  const belegt = new Set(g.geschosse.map((gs) => gs.kuerzel).filter(Boolean));
+  for (const gs of g.geschosse) {
+    if (gs.kuerzel) continue;
+    gs.kuerzel = kuerzelVorschlag(gs.name, belegt);
+    belegt.add(gs.kuerzel);
+  }
+  const vergeben = new Set();
+  /** @type {any[]} */
+  const offen = [];
+  let max = g.wand_nr_max;
+  for (const gs of g.geschosse) {
+    for (const w of gs.waende) {
+      if (w.nr != null && !vergeben.has(w.nr)) { vergeben.add(w.nr); if (w.nr > max) max = w.nr; }
+      else offen.push(w);
+    }
+  }
+  for (const w of offen) w.nr = ++max;
+  g.wand_nr_max = max;
+  for (const gs of g.geschosse) {
+    for (const w of gs.waende) w.name = wandName(gs.kuerzel, w.nr);
+  }
+}
+
 // --- Kennungen ------------------------------------------------------------
 
 /** Neue, kollisionsarme Kennung mit sprechendem Praefix. @param {string} praefix */
@@ -111,25 +272,32 @@ export function neueId(praefix) {
  * Die Struktur ist nach [L-6] immer vollstaendig — auch wenn die Oberflaeche
  * zunaechst nur ein Gebaeude zeigt.
  * @param {string} [name] Projektname
- * @param {{gebaeude?:string, geschoss?:string, hoehe_mm?:number}} [opt]
+ * @param {{gebaeude?:string, geschoss?:string, hoehe_mm?:number, kuerzel?:string}} [opt]
  */
 export function leereMappe(name, opt) {
   const o = opt || {};
-  const geschoss = neuesGeschossObjekt(o.geschoss || "Geschoss 1", o.hoehe_mm);
-  return {
+  const geschoss = neuesGeschossObjekt(o.geschoss || "Geschoss 1", o.hoehe_mm, o.kuerzel);
+  // Normalisiert zurueck, damit auch das erste Geschoss sofort sein Kuerzel traegt.
+  return normMappe({
     format: MAPPE_FORMAT,
     version: MAPPE_VERSION,
     projekt: { id: neueId("prj"), name: (name || "Neues Projekt").toString(), kopfdaten: {} },
     katalog: null,
-    gebaeude: [{ id: neueId("geb"), name: (o.gebaeude || "Gebäude 1").toString(), geschosse: [geschoss] }],
-  };
+    gebaeude: [{ id: neueId("geb"), name: (o.gebaeude || "Gebäude 1").toString(), wand_nr_max: 0,
+      geschosse: [geschoss] }],
+  });
 }
 
-/** Ein neues Geschoss-Objekt (ohne Plan, ohne Waende). @param {string} name @param {number} [hoehe_mm] */
-export function neuesGeschossObjekt(name, hoehe_mm) {
+/**
+ * Ein neues Geschoss-Objekt (ohne Plan, ohne Waende). Ohne Kuerzel bleibt es `null`
+ * und wird von `normMappe` im Gebaeude eindeutig vorgeschlagen.
+ * @param {string} name @param {number} [hoehe_mm] @param {string|null} [kuerzel]
+ */
+export function neuesGeschossObjekt(name, hoehe_mm, kuerzel) {
   return {
     id: neueId("gs"),
     name: (name || "Geschoss").toString(),
+    kuerzel: normKuerzel(kuerzel),
     hoehe_mm: (hoehe_mm == null || !Number.isFinite(+hoehe_mm)) ? null : +hoehe_mm,
     plan: null,
     // Der eine Grundbezug des Geschosses ([K-4]) — frei platzierbar seit #76,
@@ -164,6 +332,8 @@ export function normWand(w) {
   return {
     id: o.id == null ? "" : String(o.id),
     name: (o.name == null ? "" : String(o.name)),
+    // Wandnummer je Gebaeude (null = noch keine; vergeben wird in `normMappe`).
+    nr: _normNr(o.nr),
     datei: (o.datei == null || o.datei === "") ? null : String(o.datei),
     lage: normLage(o.lage),
   };
@@ -267,6 +437,9 @@ export function normGeschoss(g) {
   return {
     id: o.id == null ? "" : String(o.id),
     name: (o.name == null ? "" : String(o.name)),
+    // Geschosskuerzel (Pflicht, je Gebaeude eindeutig). Fehlt es, schlaegt `normMappe`
+    // eines aus der Bezeichnung vor — erfunden wird dabei nur ein VORSCHLAG.
+    kuerzel: normKuerzel(o.kuerzel),
     hoehe_mm: _zahlOderNull(o.hoehe_mm),
     plan: normPlan(o.plan),
     // Geschossursprung ([K-4], #76). Fehlt das Feld (jeder Altstand), ist es 0/0 —
@@ -304,11 +477,17 @@ export function normMappe(m) {
     katalog: (o.katalog == null || o.katalog === "") ? null : String(o.katalog),
     gebaeude: (Array.isArray(o.gebaeude) ? o.gebaeude : []).map((g) => {
       const gg = (g && typeof g === "object") ? g : {};
-      return {
+      const zaehler = Number.isInteger(+gg.wand_nr_max) && +gg.wand_nr_max > 0 ? +gg.wand_nr_max : 0;
+      const n = {
         id: gg.id == null || gg.id === "" ? neueId("geb") : String(gg.id),
         name: (gg.name == null ? "" : String(gg.name)),
+        // Hoechste je vergebene Wandnummer dieses Gebaeudes — sie steigt nur, damit eine
+        // geloeschte Nummer nie wieder vergeben wird und nichts nachrueckt.
+        wand_nr_max: zaehler,
         geschosse: (Array.isArray(gg.geschosse) ? gg.geschosse : []).map(normGeschoss),
       };
+      _nummeriereGebaeude(n);
+      return n;
     }),
   };
 }
@@ -343,6 +522,29 @@ export function validiereMappe(m) {
   for (const g of m.gebaeude) {
     merke(g && g.id, "Gebäude");
     if (!Array.isArray(g?.geschosse)) { f.push(`Gebäude „${g?.name || g?.id}“ ohne Geschossliste.`); continue; }
+    // Geschosskuerzel und Wandnummern je Gebaeude. Ein FEHLENDES Kuerzel bzw. eine
+    // fehlende Nummer ist hier kein Fehler — `normMappe` belegt sie vor; geprueft wird,
+    // was dasteht: Form und Eindeutigkeit, und dass der Zaehler nie hinter einer
+    // vergebenen Nummer zurueckbleibt.
+    const kuerzel = [];
+    const nummern = new Set();
+    for (const gs of g.geschosse) {
+      if (gs?.kuerzel == null || gs.kuerzel === "") continue;
+      f.push(...kuerzelFehler(gs.kuerzel, kuerzel, gs.name || gs.id));
+      kuerzel.push(normKuerzel(gs.kuerzel));
+    }
+    for (const gs of g.geschosse) {
+      for (const w of (Array.isArray(gs?.waende) ? gs.waende : [])) {
+        if (w?.nr == null) continue;
+        const nr = _normNr(w.nr);
+        if (nr == null) { f.push(`Wand „${w.name || w.id}“: Wandnummer „${w.nr}“ ist keine ganze Zahl ab 1.`); continue; }
+        if (nummern.has(nr)) f.push(`Gebäude „${g.name || g.id}“: Wandnummer ${nr} ist mehrfach vergeben.`);
+        nummern.add(nr);
+        if (g.wand_nr_max != null && nr > +g.wand_nr_max) {
+          f.push(`Gebäude „${g.name || g.id}“: Wandnummer ${nr} liegt über dem Zähler ${g.wand_nr_max}.`);
+        }
+      }
+    }
     for (const gs of g.geschosse) {
       merke(gs && gs.id, "Geschoss");
       if (gs?.hoehe_mm != null && !(gs.hoehe_mm > 0)) {
@@ -462,17 +664,77 @@ export function fuegeGebaeudeHinzu(m, name) {
 }
 
 /**
- * Geschoss in einem Gebaeude anlegen.
+ * Geschoss in einem Gebaeude anlegen. Das Kuerzel ist Pflicht: angegeben wird es
+ * geprueft (Form, Eindeutigkeit im Gebaeude) und bei Verstoss BENANNT abgewiesen;
+ * ohne Angabe (programmatische Aufrufer) wird es aus der Bezeichnung vorgeschlagen.
  * @param {any} m @param {string} gebaeudeId @param {string} name @param {number} [hoehe_mm]
+ * @param {string} [kuerzel]
  * @returns {{mappe:object, id:string}}
  */
-export function fuegeGeschossHinzu(m, gebaeudeId, name, hoehe_mm) {
+export function fuegeGeschossHinzu(m, gebaeudeId, name, hoehe_mm, kuerzel) {
   const n = _klon(m);
   const g = n.gebaeude.find((x) => x.id === String(gebaeudeId));
   if (!g) throw new Error(`Unbekanntes Gebäude „${gebaeudeId}“.`);
-  const gs = neuesGeschossObjekt(name, hoehe_mm);
+  const k = normKuerzel(kuerzel);
+  if (k) {
+    const fehler = kuerzelFehler(k, g.geschosse.map((x) => x.kuerzel), name);
+    if (fehler.length) throw new Error(fehler.join("\n"));
+  }
+  const gs = neuesGeschossObjekt(name, hoehe_mm, k);
   g.geschosse.push(gs);
-  return { mappe: n, id: gs.id };
+  return { mappe: normMappe(n), id: gs.id };
+}
+
+/**
+ * Das Kuerzel eines Geschosses setzen (Modul 0). Geprueft wie beim Anlegen; ein
+ * Verstoss wird benannt abgewiesen. Die Namen aller Waende des Geschosses folgen
+ * (die Nummern bleiben). @param {any} m @param {string} geschossId @param {string} kuerzel
+ * @returns {object} neue Mappe
+ */
+export function setzeGeschossKuerzel(m, geschossId, kuerzel) {
+  const n = _klon(m);
+  const g = n.gebaeude.find((x) => x.geschosse.some((gs) => gs.id === String(geschossId)));
+  if (!g) throw new Error(`Unbekanntes Geschoss „${geschossId}“.`);
+  const gs = g.geschosse.find((x) => x.id === String(geschossId));
+  const andere = g.geschosse.filter((x) => x !== gs).map((x) => x.kuerzel);
+  const fehler = kuerzelFehler(kuerzel, andere, gs.name);
+  if (fehler.length) throw new Error(fehler.join("\n"));
+  gs.kuerzel = normKuerzel(kuerzel);
+  return normMappe(n);
+}
+
+/**
+ * Ist ein Kuerzel im Gebaeude noch frei? (fuer Uebernahmen, die eines mitbringen)
+ * @param {any} m @param {string} gebaeudeId @param {any} kuerzel @param {string} [ausser] Geschoss-Kennung
+ */
+export function kuerzelFrei(m, gebaeudeId, kuerzel, ausser) {
+  const g = findeGebaeude(m, gebaeudeId);
+  if (!g) return false;
+  const andere = g.geschosse.filter((gs) => gs.id !== ausser).map((gs) => gs.kuerzel);
+  return kuerzelFehler(kuerzel, andere).length === 0;
+}
+
+/** Die naechste zu vergebende Wandnummer eines Gebaeudes (Zaehler + 1). */
+export function naechsteWandNr(m, gebaeudeId) {
+  const g = findeGebaeude(m, gebaeudeId);
+  if (!g) throw new Error(`Unbekanntes Gebäude „${gebaeudeId}“.`);
+  return g.wand_nr_max + 1;
+}
+
+/**
+ * „Wandnummern neu berechnen“ (Modul 0, ausdrueckliche Aktion mit Warnung): alle
+ * Waende des Gebaeudes werden lueckenlos neu nummeriert — Geschoss fuer Geschoss in
+ * der Mappenreihenfolge, Waende in der Mappenreihenfolge — und der Zaehler auf die
+ * hoechste Nummer gesetzt. Rein; bereits ausgegebene Plaene passen danach nicht mehr.
+ * @param {any} m @param {string} gebaeudeId @returns {object} neue Mappe
+ */
+export function nummeriereWaendeNeu(m, gebaeudeId) {
+  const n = _klon(m);
+  const g = n.gebaeude.find((x) => x.id === String(gebaeudeId));
+  if (!g) throw new Error(`Unbekanntes Gebäude „${gebaeudeId}“.`);
+  g.wand_nr_max = 0;
+  for (const gs of g.geschosse) for (const w of gs.waende) w.nr = null;
+  return normMappe(n);
 }
 
 /**
@@ -498,18 +760,26 @@ export function setzeWand(m, geschossId, wand) {
   const ziel = n.gebaeude.flatMap((g) => g.geschosse).find((gs) => gs.id === String(geschossId));
   if (!ziel) throw new Error(`Unbekanntes Geschoss „${geschossId}“.`);
 
-  let vorher = null;
-  for (const gs of n.gebaeude.flatMap((g) => g.geschosse)) {
-    const i = gs.waende.findIndex((w) => w.id === id);
-    if (i >= 0) { vorher = gs.waende[i]; gs.waende.splice(i, 1); }
+  const zielGeb = n.gebaeude.find((g) => g.geschosse.includes(ziel));
+  let vorher = null, vorherGeb = null;
+  for (const g of n.gebaeude) {
+    for (const gs of g.geschosse) {
+      const i = gs.waende.findIndex((w) => w.id === id);
+      if (i >= 0) { vorher = gs.waende[i]; vorherGeb = g; gs.waende.splice(i, 1); }
+    }
   }
+  // Die Wandnummer gilt je GEBAEUDE: beim Verschieben innerhalb des Gebaeudes bleibt
+  // sie, nur das Kuerzel im Namen wechselt. In ein anderes Gebaeude reist sie nicht
+  // mit — dort wird die naechste Nummer vergeben (`normMappe`).
+  const nr = wand.nr !== undefined ? wand.nr : (vorherGeb === zielGeb ? (vorher?.nr ?? null) : null);
   ziel.waende.push(normWand({
     id,
     name: wand.name !== undefined ? wand.name : (vorher?.name || ""),
+    nr,
     datei: wand.datei !== undefined ? wand.datei : (vorher?.datei ?? null),
     lage: wand.lage !== undefined ? wand.lage : (vorher?.lage ?? null),
   }));
-  return n;
+  return normMappe(n);
 }
 
 /**
@@ -666,7 +936,11 @@ export function kopfdaten(m) {
   return { name: n.projekt.name, ...(n.projekt.kopfdaten || {}) };
 }
 
-/** Umbenennen (Projekt/Gebaeude/Geschoss/Wand) anhand der Kennung. */
+/**
+ * Umbenennen (Projekt/Gebaeude/Geschoss) anhand der Kennung. Eine WAND hat keinen
+ * freien Namen mehr — er wird aus Geschosskuerzel und Wandnummer erzeugt; der
+ * Versuch wird benannt abgewiesen.
+ */
 export function benenneUm(m, id, name) {
   const n = _klon(m);
   const neu = (name || "").toString();
@@ -675,11 +949,17 @@ export function benenneUm(m, id, name) {
     if (g.id === String(id)) { g.name = neu; return n; }
     for (const gs of g.geschosse) {
       if (gs.id === String(id)) { gs.name = neu; return n; }
-      for (const w of gs.waende) if (w.id === String(id)) { w.name = neu; return n; }
+      for (const w of gs.waende) {
+        if (w.id === String(id)) throw new Error(WANDNAME_FEST(w.name));
+      }
     }
   }
   throw new Error(`Unbekannte Kennung „${id}“.`);
 }
+
+/** Meldung: der Wandname ist nicht frei aenderbar. @param {string} name */
+export const WANDNAME_FEST = (name) => `Der Name „${name}“ wird aus Geschosskürzel und `
+  + "Wandnummer gebildet und ist nicht frei änderbar — das Kürzel wird am Geschoss gepflegt.";
 
 // --- Migration v1 → v2 ----------------------------------------------------
 

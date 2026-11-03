@@ -426,11 +426,18 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
   // --- Muss 2/3: der Lageplan des IMPORTIERTEN Standes ---------------------
   const dNach = LP.lageplanDaten({ mappe: p.mappe, geschossId: p.gsId, elemente: p.elemente });
   const bNach = LP.blattHtml(dNach);
+  // Eingetragene Waende heissen seit dem Entscheid 03.11.2026 IMMER
+  // `Wand_<Kuerzel>-<Nr>` — in Eintragungsreihenfolge: wnd-vx zuerst, also Nr. 1.
+  ok("[#83] die erzeugten Wandnamen sind nach dem Archivweg dieselben",
+    MAPPE.findeWand(p.mappe, "wnd-vx").wand.name === "Wand_EG-1"
+    && MAPPE.findeWand(p.mappe, "wnd-vy").wand.name === "Wand_EG-2"
+    && MAPPE.findeWand(p.mappeVor, "wnd-vx").wand.name === "Wand_EG-1"
+    && MAPPE.findeWand(p.mappeVor, "wnd-vy").wand.name === "Wand_EG-2");
   ok("[#83] der Lageplan meldet die Stelle als zulaessige Verzahnung, nicht als Kollision",
     dNach.kollisionen.length === 0 && dNach.verzahnungen.length === 1
-    && dNach.verzahnungen[0].name_a === "Wand X" && dNach.verzahnungen[0].name_b === "Wand Y");
+    && dNach.verzahnungen[0].name_a === "Wand_EG-1" && dNach.verzahnungen[0].name_b === "Wand_EG-2");
   ok("[#83] beide Wandnamen stehen dafuer auf dem Blatt",
-    /<h4>Verzahnungen<\/h4>/.test(bNach.html) && /„Wand X“ und „Wand Y“/.test(bNach.html));
+    /<h4>Verzahnungen<\/h4>/.test(bNach.html) && /„Wand_EG-1“ und „Wand_EG-2“/.test(bNach.html));
   ok("[#83] der Vollstaendigkeitsvermerk weist an dieser Stelle keinen Mangel aus",
     dNach.vollstaendig === true && dNach.meldungen.length === 0
     && !/nicht vollständig/i.test(bNach.html));
@@ -472,7 +479,10 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
   ok("[#83] die Kopie ist eine eigene Wand mit eigenen Verzahnungsbereichen",
     kopieId !== "wnd-vx"
     && JSON.stringify(store.holeElement(kopieId).wandelement.interlocks) === JSON.stringify(PASSEND_X)
-    && store.holeElement(kopieId).name === "Wand X (Kopie)");
+    // Kein Zusatz „(Kopie)“ mehr: bis zum Eintragen traegt sie den Namen der Quelle.
+    && store.holeElement(kopieId).name === store.holeElement("wnd-vx").name
+    && store.holeElement(kopieId).name === "Wand_EG-1"
+    && !/Kopie/.test(store.holeElement(kopieId).name));
   ok("[#83] sie ist unverortet und steht in keinem Geschoss",
     !MAPPE.findeWand(nachherMappe, kopieId)
     && store.mappeReferenzen().unverortet.includes(kopieId));
@@ -571,8 +581,9 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
     && gelesen.waende.every((w) => ARCHIV.wandIdAusPfad(w.pfad) === w.id));
   ok("[#86] der Bericht nennt Projekt, Geschosse, Wandnamen und Katalogkennung", (() => {
     const t = ARCHIV.berichtZeilen(gelesen).join(" | ");
+    // Die Wandnamen sind die erzeugten (Wand_<Kuerzel>-<Nr>, Eintragungsreihenfolge).
     return /Exportprobe/.test(t) && /Geschosse \(1\): EG/.test(t)
-      && /EG-W01/.test(t) && /EG-W02/.test(t) && /kat-extern/.test(t);
+      && /Wand_EG-1\b/.test(t) && /Wand_EG-2\b/.test(t) && /kat-extern/.test(t);
   })());
   ok("[#86] vor der Bestaetigung ist der Zielspeicher unveraendert leer",
     store.listeProjekte().length === 0 && store.listeElemente().length === 0);
@@ -733,7 +744,7 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
 
   // --- Muss-not: kein neues gespeichertes Feld, kein Versionssprung --------
   ok("[#86] der Importweg legt kein neues Feld an und bricht keine Versionsachse",
-    store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && store.PROJEKT_VERSION === 2
     && MAPPE.MAPPE_VERSION === 2
     && MAPPE.alleWaende(store.holeMappe()).every(({ wand }) => wand.datei === null));
 }
@@ -862,10 +873,32 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
     && MAPPE.findeWand(zMappe1, "z-w1").wand.lage.laenge_grid === 10);
   ok("[L-4] nach der Teiluebernahme gibt es keine verwaisten Eintraege",
     store.mappeReferenzen().verwaist.length === 0);
+  // Zulaessig sind seit dem Entscheid 03.11.2026 genau die drei neuen, optionalen
+  // Mappenfelder `geschoss.kuerzel`, `wand.nr` und `gebaeude.wand_nr_max` — dazu das
+  // schon frueher entschiedene `geschoss.mengen` (manuelle Mengen der
+  // Geschoss-Gesamtstueckliste, [P-20]). Jedes ANDERE neue Feld an Geschoss, Wand
+  // oder Gebaeude faellt hier weiterhin auf.
   ok("[#86] kein neues gespeichertes Feld, keine gebrochene Versionsachse",
-    store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2 && MAPPE.MAPPE_VERSION === 2
+    store.SCHEMA_VERSION === 7 && store.PROJEKT_VERSION === 2 && MAPPE.MAPPE_VERSION === 2
     && JSON.stringify(Object.keys(neuGs1.geschoss).sort())
-      === JSON.stringify(["bemassungen", "hoehe_mm", "id", "name", "plan", "ursprung_mm", "waende"]));
+      === JSON.stringify(["bemassungen", "hoehe_mm", "id", "kuerzel", "mengen", "name", "plan", "ursprung_mm", "waende"])
+    && neuGs1.geschoss.waende.every((w) => JSON.stringify(Object.keys(w).sort())
+      === JSON.stringify(["datei", "id", "lage", "name", "nr"]))
+    && zMappe1.gebaeude.every((g) => JSON.stringify(Object.keys(g).sort())
+      === JSON.stringify(["geschosse", "id", "name", "wand_nr_max"])));
+  // Wandnummer je GEBAEUDE: im bestehenden Ziel bekommen die uebernommenen Waende
+  // die NAECHSTEN Nummern des Ziels (z-w1 hat dort schon die 1), das Kuerzel „EG“
+  // ist im Ziel frei und reist deshalb mit.
+  ok("[#86] im bestehenden Projekt bekommen die Waende die naechsten Nummern des Ziels",
+    neuGs1.geschoss.kuerzel === "EG"
+    && MAPPE.findeWand(zMappe1, "z-w1").wand.nr === 1
+    && MAPPE.findeWand(zMappe1, "q-eg1").wand.nr === 2
+    && MAPPE.findeWand(zMappe1, "q-eg2").wand.nr === 3
+    && zMappe1.gebaeude[0].wand_nr_max === 3
+    && MAPPE.findeWand(zMappe1, "q-eg1").wand.name === "Wand_EG-2"
+    && store.holeElement("q-eg1").name === "Wand_EG-2"
+    && store.holeElement("q-eg1").wandelement.name === "Wand_EG-2"
+    && store.holeElement("q-eg2").name === "Wand_EG-3");
 
   // === Akzeptanztest 2: dasselbe Geschoss in ein NEU angelegtes Projekt ====
   globalThis.localStorage = new MemStorage();
@@ -880,6 +913,11 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
     store.listeProjekte().length === 1 && m2.projekt.name === "Vom Kollegen"
     && MAPPE.alleGeschosse(m2).length === 1
     && MAPPE.alleGeschosse(m2)[0].geschoss.name === "EG");
+  ok("[#86] im NEU angelegten Projekt bleiben Quellnummern und Kuerzel erhalten",
+    MAPPE.alleGeschosse(m2)[0].geschoss.kuerzel === "EG"
+    && MAPPE.findeWand(m2, "q-eg1").wand.nr === 1 && MAPPE.findeWand(m2, "q-eg2").wand.nr === 2
+    && store.holeElement("q-eg1").name === "Wand_EG-1"
+    && store.holeElement("q-eg2").name === "Wand_EG-2");
   ok("[#86] Wandinhalte, Lage und Mass sind auch hier vollstaendig da", (() => {
     const gs = MAPPE.alleGeschosse(m2)[0].geschoss;
     return gs.waende.length === 2 && MAPPE.bemassungen(m2, gs.id).length === 1
@@ -910,7 +948,9 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
   }, store.projektMappe(z3.projekt.id));
   ok("[#86] eine einzelne Wand kommt allein — ohne Nachbarwaende und ohne Planbild",
     u3.waende.length === 1 && u3.waende[0].id === "q-og1" && u3.bilder.length === 0
-    && u3.ziel.geschossId === z3Gs && u3.ziel.wandName === "OG-W01");
+    // Der Dialog nennt die Wand mit ihrem QUELLnamen (q-og1 ist im Quellgebaeude die
+    // dritte eingetragene Wand); im Ziel bekommt sie die naechste Nummer (s. u.).
+    && u3.ziel.geschossId === z3Gs && u3.ziel.wandName === "Wand_OG-3");
   ok("[#86] der Dialog sagt VOR der Bestaetigung, dass Lage und Masse nicht mitreisen", (() => {
     const t = ARCHIV.uebernahmeZeilen(u3).concat(u3.hinweise).join(" | ");
     return /ohne Lage/i.test(t) && /NICHT mit/.test(t);
@@ -929,6 +969,13 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
     const t = MAPPE.findeWand(m3, "q-og1");
     return !!t && t.geschoss.id === z3Gs && t.wand.lage === null
       && store.holeElement("q-og1").wandelement.length_mm === 3000;
+  })());
+  ok("[#86] die einzelne Wand bekommt die naechste Nummer im Zielgebaeude", (() => {
+    const t = MAPPE.findeWand(m3, "q-og1");
+    // „Bestand“ hat kein Kuerzel mitbekommen → Vorschlag aus der Bezeichnung: „BE“.
+    return t.geschoss.kuerzel === "BE" && t.wand.nr === 1 && m3.gebaeude[0].wand_nr_max === 1
+      && t.wand.name === "Wand_BE-1" && store.holeElement("q-og1").name === "Wand_BE-1"
+      && store.holeElement("q-og1").wandelement.name === "Wand_BE-1";
   })());
   ok("[#86] weder Quellgeschoss noch fremde Waende noch Masse kommen dabei mit",
     MAPPE.alleGeschosse(m3).length === 1 && store.listeElemente().length === 1
@@ -1007,6 +1054,140 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
       && u.bilder === gelesenT.bilder && u.fehler === gelesenT.fehler
       && u.hinweise === gelesenT.hinweise && u.ziel.art === ARCHIV.UMFANG_PROJEKT;
   })());
+}
+
+// --- Wandnummer Archiv-Roundtrip (Entscheid 03.11.2026) ---------------------
+//
+// Wandname = `Wand_<Geschosskuerzel>-<Nr>`, Nummer je GEBAEUDE, Zaehler
+// `wand_nr_max` steigt nur. Geprueft am ECHTEN Pfad:
+//
+//   echte Speicherschicht (storage.js) -> exportPlan/archivDateien
+//   -> zipSync/entpacke -> leseArchiv/schreibeArchiv -> LEERER Zielspeicher.
+{
+  class MemStorage {
+    constructor() { this.m = new Map(); }
+    getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k, v) { this.m.set(k, String(v)); }
+    removeItem(k) { this.m.delete(k); }
+  }
+  globalThis.localStorage = new MemStorage();
+  const store = await import("../../docs/shared/storage.js");
+  const PARSE = { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) };
+  const wandEl = (n, l) => ({ ...buildWall(n, l, 2600, []), wandtyp: "mit_wind" });
+
+  // --- Quelle: EG + OG (Kuerzel „O1“ ausdruecklich gesetzt), vier Waende, die
+  // hoechste Nummer wird geloescht -> Luecke: Zaehler 4, hoechste Nummer 3.
+  globalThis.localStorage = new MemStorage();
+  const qPrj = store.fuegeProjektHinzu("Nummernprobe", { geschoss: "EG", hoehe_mm: 2600 });
+  const qGeb = qPrj.gebaeude[0].id;
+  const qEg = qPrj.gebaeude[0].geschosse[0].id;
+  const rOg = MAPPE.fuegeGeschossHinzu(store.holeMappe(), qGeb, "OG", 2600, "O1");
+  store.setzeMappe(rOg.mappe);
+  const qOg = rOg.id;
+  store.speichere("frei A", wandEl("frei A", 2000), "nr-a");
+  store.speichere("frei B", wandEl("frei B", 1000), "nr-b");
+  store.speichere("frei C", wandEl("frei C", 1500), "nr-c");
+  store.speichere("frei D", wandEl("frei D", 1250), "nr-d");
+  store.verorteWand("nr-a", qEg, { lage: null });
+  store.verorteWand("nr-b", qEg, { lage: null });
+  store.verorteWand("nr-c", qOg, { lage: null });
+  store.verorteWand("nr-d", qEg, { lage: null });
+  store.loesche("nr-d");
+  const mVor = store.holeMappe();
+  const nrVon = (m, id) => MAPPE.findeWand(m, id).wand.nr;
+  const nameVon = (m, id) => MAPPE.findeWand(m, id).wand.name;
+  ok("[Wandnr] Ausgangsstand: Nummern je Gebaeude, Luecke durch die geloeschte Wand",
+    nrVon(mVor, "nr-a") === 1 && nrVon(mVor, "nr-b") === 2 && nrVon(mVor, "nr-c") === 3
+    && !MAPPE.findeWand(mVor, "nr-d") && mVor.gebaeude[0].wand_nr_max === 4
+    && nameVon(mVor, "nr-c") === "Wand_O1-3" && store.holeElement("nr-c").name === "Wand_O1-3"
+    && store.holeElement("nr-a").wandelement.name === "Wand_EG-1");
+
+  /** Archiv der aktuellen Mappe als ZIP-Eintraege (echter Export). */
+  const archivEintraege = async () => {
+    const m = store.holeMappe();
+    const plan = ARCHIV.exportPlan(m, store.listeElemente().map((e) => e.id), []);
+    const files = ARCHIV.archivDateien(m, plan, (id) => store.projektObjekt(id), () => null);
+    const w = ARCHIV.archivName(m);
+    return entpacke(zipSync(files.map((d) => ({ name: w + "/" + d.name, data: d.data }))));
+  };
+  /** Die Nummernsicht eines Standes: Kuerzel, Zaehler, Nummern und Namen (Mappe + Speicher). */
+  const nummernSicht = (m) => JSON.stringify({
+    kuerzel: MAPPE.alleGeschosse(m).map((t) => [t.geschoss.name, t.geschoss.kuerzel]),
+    zaehler: m.gebaeude.map((g) => g.wand_nr_max),
+    waende: MAPPE.alleWaende(m).map(({ wand }) => [wand.id, wand.nr, wand.name,
+      store.holeElement(wand.id)?.name, store.holeElement(wand.id)?.wandelement?.name]),
+  });
+  const sichtVor = nummernSicht(mVor);
+  const eintraege = await archivEintraege();
+  const mappeJson = eintraege.find((e) => e.name.endsWith("/" + ARCHIV.DATEI_MAPPE));
+  ok("[Wandnr] projekt.json traegt Kuerzel, Nummern und Zaehler", (() => {
+    const j = JSON.parse(dec(mappeJson.data));
+    const gs = j.gebaeude[0].geschosse;
+    return j.gebaeude[0].wand_nr_max === 4 && gs.map((g) => g.kuerzel).join() === "EG,O1"
+      && gs[0].waende.map((w) => w.nr).join() === "1,2" && gs[1].waende[0].nr === 3;
+  })());
+
+  // --- Ganzes Projekt in einen LEEREN Speicher ----------------------------
+  globalThis.localStorage = new MemStorage();
+  const gel = ARCHIV.leseArchiv(eintraege, PARSE);
+  await store.schreibeArchiv(gel, {});
+  const mNach = store.holeMappe();
+  ok("[Wandnr] Archiv-Roundtrip: Nummern, Kuerzel, Zaehler (samt Luecke) und Namen identisch",
+    gel.fehler.length === 0 && nummernSicht(mNach) === sichtVor
+    && mNach.gebaeude[0].wand_nr_max === 4);
+  ok("[Wandnr] nach dem Import wird die naechste Nummer HINTER der Luecke vergeben", (() => {
+    store.speichere("frei E", wandEl("frei E", 1000), "nr-e");
+    store.verorteWand("nr-e", qEg, { lage: null });
+    const m = store.holeMappe();
+    return nrVon(m, "nr-e") === 5 && nameVon(m, "nr-e") === "Wand_EG-5"
+      && store.holeElement("nr-e").name === "Wand_EG-5" && m.gebaeude[0].wand_nr_max === 5;
+  })());
+
+  // --- Von Hand doppelt gesetzte Nummer in projekt.json -------------------
+  const doppelt = eintraege.map((e) => {
+    if (e !== mappeJson) return e;
+    const j = JSON.parse(dec(e.data));
+    j.gebaeude[0].geschosse[1].waende[0].nr = 1;          // nr-c (OG) -> 1 wie nr-a (EG)
+    return { name: e.name, data: enc(JSON.stringify(j)) };
+  });
+  globalThis.localStorage = new MemStorage();
+  const gelD = ARCHIV.leseArchiv(doppelt, PARSE);
+  await store.schreibeArchiv(gelD, {});
+  const mD = store.holeMappe();
+  ok("[Wandnr] eine doppelte Nummer wird beim Import neu vergeben — die naechste nach dem Zaehler",
+    gelD.fehler.length === 0
+    && nrVon(mD, "nr-a") === 1 && nrVon(mD, "nr-b") === 2
+    && nrVon(mD, "nr-c") === 5 && mD.gebaeude[0].wand_nr_max === 5
+    && nameVon(mD, "nr-c") === "Wand_O1-5" && store.holeElement("nr-c").name === "Wand_O1-5"
+    && store.holeElement("nr-c").wandelement.name === "Wand_O1-5");
+
+  // --- Teiluebernahme EG in ein BESTEHENDES Projekt ------------------------
+  // Ziel: eigenes „EG“ (Kuerzel belegt) mit einer Wand, Zaehler durch eine
+  // geloeschte Wand bei 2.
+  globalThis.localStorage = new MemStorage();
+  const zPrj = store.fuegeProjektHinzu("Zielprojekt", { geschoss: "EG", hoehe_mm: 2600 });
+  const zEg = zPrj.gebaeude[0].geschosse[0].id;
+  store.speichere("frei Z", wandEl("frei Z", 1000), "z-1");
+  store.speichere("frei Y", wandEl("frei Y", 1000), "z-2");
+  store.verorteWand("z-1", zEg, { lage: null });
+  store.verorteWand("z-2", zEg, { lage: null });
+  store.loesche("z-2");
+  const gelT = ARCHIV.leseArchiv(eintraege, PARSE);
+  const egOpt = ARCHIV.teilauswahlOptionen(gelT).geschosse.find((g) => g.name === "EG");
+  const uT = ARCHIV.uebernahme(gelT, { umfang: ARCHIV.UMFANG_GESCHOSS, geschossId: egOpt.id },
+    store.projektMappe(zPrj.projekt.id));
+  await store.schreibeArchiv(uT, { ueberschreiben: true });
+  const mT = store.projektMappe(zPrj.projekt.id);
+  const neuGs = MAPPE.findeWand(mT, "nr-a").geschoss;
+  ok("[Wandnr] Teiluebernahme in ein bestehendes Projekt: die naechsten Nummern des Ziels",
+    nrVon(mT, "z-1") === 1 && nrVon(mT, "nr-a") === 3 && nrVon(mT, "nr-b") === 4
+    && mT.gebaeude[0].wand_nr_max === 4);
+  ok("[Wandnr] ein im Ziel belegtes Kuerzel wird nicht doppelt vergeben (Vorschlag statt Kopie)",
+    // „EG“ ist belegt -> Vorschlag Buchstabe + Ziffer: „E1“.
+    neuGs.id !== zEg && neuGs.kuerzel === "E1"
+    && nameVon(mT, "nr-a") === MAPPE.wandName(neuGs.kuerzel, 3)
+    && store.holeElement("nr-a").name === MAPPE.wandName(neuGs.kuerzel, 3)
+    && nameVon(mT, "z-1") === "Wand_EG-1");
 }
 
 // --- Ausgabe --------------------------------------------------------------

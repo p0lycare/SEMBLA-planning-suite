@@ -147,7 +147,7 @@ t("migration: 'nein' -> ohne_wind", nachM["alt-AltNein"].wandelement.wandtyp ===
 t("migration: ohne Feld -> mit_wind", nachM["alt-AltOhneFeld"].wandelement.wandtyp === "mit_wind");
 t("migration: Alt-Feld bleibt erhalten (kein Datenverlust)",
   nachM["alt-AltNein"].eingaben.statik.mitWind === "nein");
-t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "6");
+t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "7");
 
 // idempotent: erneutes migrieren aendert nichts mehr
 nachM["alt-AltNein"].wandelement.wandtyp = "ohne_wind";
@@ -190,7 +190,7 @@ t("export: Projektformat bleibt v2", store.projektObjekt(idAlt).version === 2);
     !localStorage.getItem("sembla:elemente").includes("brandklasse"));
   t("[#79] es gibt keine Brandklassen-Migration und keinen Schemasprung", (() => {
     store.migrieren();
-    return localStorage.getItem("sembla:version") === "6" && store.SCHEMA_VERSION === 6
+    return localStorage.getItem("sembla:version") === "7" && store.SCHEMA_VERSION === 7
       && !("brandklasse" in store.holeElement(idBk).wandelement);
   })());
 
@@ -330,7 +330,7 @@ t("produkte: reisen im Projekt-JSON mit (nur IDs)",
   && pK.eingaben.planung.produkte.rollen.rod_std.join(",") === "rod-m10-1100"
   && !JSON.stringify(pK.eingaben.planung).includes("Latte 40×60"));
 t("produkte: oeffentliches Projektformat bleibt Version 2", pK.version === 2 && store.PROJEKT_VERSION === 2);
-t("produkte: interne Schema-Version ist 6 (Lage in mm)", store.SCHEMA_VERSION === 6);
+t("produkte: interne Schema-Version ist 7 (Wandnummern)", store.SCHEMA_VERSION === 7);
 t("produkte: Katalog-Formatversion getrennt", KAT.KATALOG_VERSION === 2);
 const idKimp = store.importiereText(JSON.stringify(pK), "Katalogwand.json");
 t("produkte: nach Projekt-Import wieder geladen",
@@ -440,7 +440,8 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   t("[L-6] vollstaendige Hierarchie mit genau einem Gebaeude/Geschoss",
     mig.gebaeude.length === 1 && mig.gebaeude[0].geschosse.length === 1);
   t("[L-7] beide Bestandswaende uebernommen", PM.alleWaende(mig).length === 2);
-  t("[L-7] Namen erhalten", PM.findeWand(mig, "w-b1").wand.name === "Bestand A");
+  t("[L-7] Namen nach der Wandnummer erzeugt (v7), Kennungen erhalten",
+    PM.findeWand(mig, "w-b1").wand.name === "Wand_G1-1" && PM.findeWand(mig, "w-b1").wand.nr === 1);
   t("[L-7] KEINE Lagedaten erfunden", PM.alleWaende(mig).every((e) => e.wand.lage === null));
   t("[L-7] Wandelemente unveraendert (kein Datenverlust)",
     store.holeElement("w-b1").wandelement.length_mm === 2000
@@ -448,7 +449,7 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   t("[L-3] Mappe traegt keine Wandgeometrie",
     !localStorage.getItem("sembla:projekte").includes("courses"));
   t("[L-7] Zeiger auf die aktive Wand bleibt bestehen", store.aktivId() === "w-b2");
-  t("migration: Schema-Version auf 6", localStorage.getItem("sembla:version") === "6");
+  t("migration: Schema-Version auf 7", localStorage.getItem("sembla:version") === "7");
   t("[L-6] die Mappe liegt als LISTE mit genau einem Projekt vor",
     JSON.parse(localStorage.getItem("sembla:projekte")).length === 1
     && localStorage.getItem("sembla:projektmappe") === null);
@@ -528,12 +529,17 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
       return false;
     } catch { return true; }
   })());
-  // Anzeigename der Mappe folgt dem Wandnamen; die Referenz bleibt die id ([L-4])
-  store.umbenennen("w-b1", "Bestand A Nord");
-  t("[L-4] Umbenennen fuehrt den Anzeigenamen der Mappe mit",
-    store.wandVerortung("w-b1")?.wand.name === "Bestand A Nord"
+  // Der Name einer eingetragenen Wand ist erzeugt (Wand_<Kuerzel>-<Nr>, Entscheid
+  // 03.11.2026) — freies Umbenennen wird benannt abgewiesen und schreibt nichts.
+  const nameVorUmb = store.holeElement("w-b1").name;
+  t("Wandname: Umbenennen einer eingetragenen Wand wird benannt abgewiesen",
+    (() => { try { store.umbenennen("w-b1", "Bestand A Nord"); return false; }
+             catch (e) { return /nicht frei änderbar/.test(e.message); } })());
+  t("Wandname: Mappe und Wandspeicher tragen weiter den erzeugten Namen",
+    store.wandVerortung("w-b1")?.wand.name === nameVorUmb && /^Wand_[A-Z0-9]{1,2}-\d+$/.test(nameVorUmb)
+    && store.holeElement("w-b1").wandelement.name === nameVorUmb
     && store.wandVerortung("w-b1").wand.id === "w-b1");
-  t("[L-3] Umbenennen laesst Lage und Wandelement unberuehrt",
+  t("[L-3] der abgewiesene Versuch laesst Lage und Wandelement unberuehrt",
     store.wandVerortung("w-b1").wand.lage.laenge_grid === 16
     && store.holeElement("w-b1").wandelement.length_mm === 2000);
   t("[L-4] Wand steht nach dem Umtragen nur einmal in der Mappe",
@@ -581,7 +587,7 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
       gebaeude: [{ id: "g", geschosse: [{ id: "g", waende: [] }] }] }); return false; } catch { return true; }
   })());
   t("mappe: eigene Formatversion, getrennt von Projekt/Katalog/Schema",
-    PM.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6);
+    PM.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 7);
   t("mappe: eigener Speicherschluessel (nicht im Wandspeicher)",
     !!localStorage.getItem("sembla:projekte")
     && !localStorage.getItem("sembla:elemente").includes("start_mm"));
@@ -902,8 +908,8 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   // Kein Formatsprung und keine Migration: der Abschnitt ist optional und wird beim LESEN
   // aus `standardEingaben()` aufgefuellt.
   t("[P-20] die Versionsachsen bleiben unveraendert",
-    store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6
-    && store.migrieren() === 6);
+    store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 7
+    && store.migrieren() === 7);
 
   // --- Kommentar je Position ([P-20], #81) ---------------------------------
   // Reine Zusatzangabe an DERSELBEN Positionskennung. Geprueft wird der Speicherweg:
@@ -976,7 +982,7 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   t("[P-20] ein Altprojekt ohne den Abschnitt laedt ohne Kommentare",
     Object.keys(store.holeKommentare(idAltM)).length === 0);
   t("[P-20] der Kommentar bringt keinen Schema- oder Formatsprung",
-    store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6 && store.migrieren() === 6);
+    store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 7 && store.migrieren() === 7);
 }
 
 // 17) [#82]: Verzahnungsbereiche ueberstehen Export, Import und Duplizieren unveraendert
@@ -1133,7 +1139,7 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     t("[#85] Ja: der Geschosseintrag ist ebenfalls weg", geschossWeg(f.p, f.eg));
     t("[#85] Ja: die Bilanz nennt entfernte und erhaltene Wandelemente",
       erg.entfernt.length === 2 && erg.erhalten.length === 0
-      && erg.entfernt.map((w) => w.name).sort().join(",") === "Wand 1,Wand 2");
+      && erg.entfernt.map((w) => w.name).sort().join(",") === "Wand_EG-1,Wand_EG-2");
     t("[#85] Ja: kein Wandelement ausserhalb der geloeschten Struktur",
       store.holeElement(f.w3) !== null && store.holeElement(f.wF) !== null
       && store.wandVerortung(f.w3) !== null && store.wandVerortung(f.wF) !== null);
@@ -1198,14 +1204,16 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     const f = baue();
     store.setzeMappe(PM.setzeWand(store.projektMappe(f.p), f.eg,
       { id: "w-geist", name: "Geisterwand" }));
+    // Auch der verwaiste Eintrag traegt den erzeugten Namen (naechste Nummer des Gebaeudes).
+    const geistName = PM.findeWand(store.projektMappe(f.p), "w-geist").wand.name;
     const info = store.strukturWaende("geschoss", f.eg);
     t("[#85] die Vorschau trennt vorhandene und verwaiste Eintraege",
       info.waende.length === 3 && info.vorhanden.length === 2
-      && info.verwaist.length === 1 && info.verwaist[0].name === "Geisterwand");
+      && info.verwaist.length === 1 && info.verwaist[0].name === geistName);
     const erg = store.loescheGeschoss(f.eg, { mitWaenden: true });
     t("[#85] der Vorgang laeuft durch und benennt den verwaisten Eintrag",
       erg.entfernt.length === 2 && erg.verwaist.length === 1
-      && erg.verwaist[0].name === "Geisterwand");
+      && erg.verwaist[0].name === geistName);
     t("[#85] Geschoss weg, kein verwaister Rest, fremde Waende unberuehrt",
       geschossWeg(f.p, f.eg) && store.mappeReferenzen().verwaist.length === 0
       && store.holeElement(f.w3) !== null && store.holeElement(f.wF) !== null);
@@ -1247,8 +1255,8 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
       !(localStorage.getItem("sembla:projekte") || "").includes("mitWaenden")
       && !(localStorage.getItem("sembla:elemente") || "").includes("mitWaenden"));
     t("[#85] die Versionsachsen bleiben unveraendert",
-      store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
-      && PM.MAPPE_VERSION === 2 && store.migrieren() === 6);
+      store.SCHEMA_VERSION === 7 && store.PROJEKT_VERSION === 2
+      && PM.MAPPE_VERSION === 2 && store.migrieren() === 7);
   }
 }
 
@@ -1363,8 +1371,121 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     !(KAT.VORLAGE_FELD in KAT.katalogObjekt(kataloge()[vId]))
     && !("id" in KAT.katalogObjekt(kataloge()[vId])));
   t("[#102] die Versionsachsen bleiben unveraendert",
-    store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && store.PROJEKT_VERSION === 2
     && KAT.KATALOG_VERSION === 2 && PM.MAPPE_VERSION === 2);
+}
+
+// 20) Wandnummer je Gebaeude (Entscheid 03.11.2026) — Speicherschicht ----------
+// Name = Wand_<Kuerzel>-<Nr>; Zaehler je Gebaeude steigt nur; gemerkt in der Mappe,
+// gezogen in Eintrag UND wandelement.name. Geprueft am echten Speicher.
+{
+  const PM = await import("../../docs/shared/sembla-projektmappe.js");
+
+  // (a) Migration v6 -> v7: Bestand ohne Kuerzel/Nummer wird einmal durchnummeriert
+  localStorage.m.clear();
+  const wA = buildWall("Nord", 2000, 2600, []), wB = buildWall("Süd", 1000, 2600, []);
+  const wC = buildWall("Ost", 1500, 2600, []), wX = buildWall("Lose", 1000, 2600, []);
+  localStorage.setItem("sembla:elemente", JSON.stringify({
+    "v-a": { id: "v-a", name: "Nord", wandelement: wA, erstellt: "x", geaendert: "1" },
+    "v-b": { id: "v-b", name: "Süd", wandelement: wB, erstellt: "x", geaendert: "2" },
+    "v-c": { id: "v-c", name: "Ost", wandelement: wC, erstellt: "x", geaendert: "3" },
+    "v-x": { id: "v-x", name: "Lose", wandelement: wX, erstellt: "x", geaendert: "4" },
+  }));
+  localStorage.setItem("sembla:projekte", JSON.stringify([{
+    format: "SEMBLA-Projektmappe", version: 2, projekt: { id: "p-v6", name: "Bestand v6" }, katalog: null,
+    gebaeude: [{ id: "g-v6", name: "Haus", geschosse: [
+      { id: "gs-eg", name: "EG", waende: [{ id: "v-a", name: "Nord", lage: null }, { id: "v-b", name: "Süd", lage: null }] },
+      { id: "gs-og", name: "OG", waende: [{ id: "v-c", name: "Ost", lage: null }] },
+    ] }],
+  }]));
+  localStorage.setItem("sembla:aktiv:projekt", "p-v6");
+  localStorage.setItem("sembla:version", "6");
+  store.migrieren();
+  const roh7 = JSON.parse(localStorage.getItem("sembla:projekte"))[0];
+  t("Wandnummer v7: Migration schreibt Kuerzel, Nummern und Zaehler fest in den Speicher",
+    localStorage.getItem("sembla:version") === "7"
+    && roh7.gebaeude[0].geschosse.map((g) => g.kuerzel).join(",") === "EG,OG"
+    && roh7.gebaeude[0].geschosse.flatMap((g) => g.waende.map((w) => w.nr)).join(",") === "1,2,3"
+    && roh7.gebaeude[0].wand_nr_max === 3);
+  t("Wandnummer v7: Eintrag UND wandelement.name tragen den erzeugten Namen",
+    store.holeElement("v-a").name === "Wand_EG-1" && store.holeElement("v-a").wandelement.name === "Wand_EG-1"
+    && store.holeElement("v-c").name === "Wand_OG-3" && store.holeElement("v-c").wandelement.name === "Wand_OG-3");
+  t("Wandnummer v7: Geometrie, Aenderungszeitpunkt und nicht eingetragene Waende bleiben unberuehrt",
+    store.holeElement("v-b").wandelement.length_mm === 1000 && store.holeElement("v-b").geaendert === "2"
+    && store.holeElement("v-x").name === "Lose" && store.holeElement("v-x").wandelement.name === "Lose");
+  const nachMig = localStorage.getItem("sembla:projekte");
+  store.migrieren();
+  t("Wandnummer v7: ein zweites Laden aendert nichts mehr (danach fest)",
+    localStorage.getItem("sembla:projekte") === nachMig);
+
+  // (b) Speichern mit veraltetem Namen schreibt ihn nicht zurueck (Modul 1/Undo-Pfad)
+  store.speichere("Nord alt", { ...store.holeElement("v-a").wandelement, name: "Nord alt" }, "v-a");
+  t("Wandnummer: speichere() einer eingetragenen Wand erzwingt den erzeugten Namen",
+    store.holeElement("v-a").name === "Wand_EG-1" && store.holeElement("v-a").wandelement.name === "Wand_EG-1");
+  t("Wandnummer: freies Umbenennen nur fuer eine NICHT eingetragene Wand",
+    (() => { store.umbenennen("v-x", "Lose 2"); return store.holeElement("v-x").name === "Lose 2"; })()
+    && (() => { try { store.umbenennen("v-a", "X"); return false; } catch { return true; } })());
+
+  // (c) Neue Wand, Loeschen ohne Nachruecken, Kopie
+  const idNeu = store.speichere("egal", buildWall("egal", 2000, 2600, []));
+  store.verorteWand(idNeu, "gs-og", { lage: null });
+  t("Wandnummer: eine neue Wand bekommt die naechste Nummer (4)",
+    store.holeElement(idNeu).name === "Wand_OG-4" && store.wandVerortung(idNeu).wand.nr === 4);
+  store.loesche("v-b");
+  const idNeu2 = store.speichere("egal", buildWall("egal", 2000, 2600, []));
+  store.verorteWand(idNeu2, "gs-eg", { lage: null });
+  t("Wandnummer: nach Loeschen der 2 rueckt nichts nach, die naechste ist 5",
+    store.holeElement("v-a").name === "Wand_EG-1" && store.holeElement("v-c").name === "Wand_OG-3"
+    && store.holeElement(idNeu2).name === "Wand_EG-5" && store.holeMappe().gebaeude[0].wand_nr_max === 5);
+  const idKopie = store.dupliziere("v-a");
+  t("Wandnummer: die Kopie traegt kein „(Kopie)“", !/Kopie/.test(store.holeElement(idKopie).name));
+  store.verorteWand(idKopie, "gs-eg", { lage: null });
+  t("Wandnummer: die eingetragene Kopie bekommt die naechste Nummer (6)",
+    store.holeElement(idKopie).name === "Wand_EG-6" && store.holeElement(idKopie).wandelement.name === "Wand_EG-6"
+    && store.holeElement("v-a").name === "Wand_EG-1");
+
+  // (d) Verschieben: im Gebaeude bleibt die Nummer, in ein anderes Projekt die naechste dort
+  store.verorteWand("v-a", "gs-og", { lage: null });
+  t("Wandnummer: Verschieben ins OG behaelt die Nummer, nur das Kuerzel wechselt",
+    store.holeElement("v-a").name === "Wand_OG-1" && store.wandVerortung("v-a").wand.nr === 1);
+  const p2 = store.fuegeProjektHinzu("Zweites Projekt", { geschoss: "EG" });
+  const gsP2 = PM.alleGeschosse(p2)[0].geschoss.id;
+  store.verorteWand("v-c", gsP2, { lage: null });
+  t("Wandnummer: in ein anderes Projekt verschoben gilt dessen Zaehler (1)",
+    store.holeElement("v-c").name === "Wand_EG-1" && store.projektMappe("p-v6").gebaeude[0].wand_nr_max === 6);
+  store.setzeAktivesProjekt("p-v6");
+
+  // (e) Ein aelterer Mappenstand (Rueckgaengig, ueberschreibender Import) senkt den Zaehler nicht
+  const alt = JSON.parse(JSON.stringify(store.projektMappe("p-v6")));
+  const idNeu3 = store.speichere("egal", buildWall("egal", 2000, 2600, []));
+  store.verorteWand(idNeu3, "gs-eg", { lage: null });
+  t("Wandnummer: Vorbedingung — die neue Wand ist die 7", store.wandVerortung(idNeu3).wand.nr === 7);
+  store.loesche(idNeu3);
+  store.setzeMappe(alt);                                   // Stand mit Zaehler 6
+  t("Wandnummer: ein aelterer Stand setzt den Zaehler nicht zurueck",
+    store.projektMappe("p-v6").gebaeude[0].wand_nr_max === 7);
+  const idNeu4 = store.speichere("egal", buildWall("egal", 2000, 2600, []));
+  store.verorteWand(idNeu4, "gs-eg", { lage: null });
+  t("Wandnummer: die einmal vergebene 7 kommt nie wieder — die naechste ist 8",
+    store.holeElement(idNeu4).name === "Wand_EG-8");
+
+  // (f) Kuerzel aendern ueber den Speicher: Namen im Wandspeicher folgen
+  store.setzeMappe(PM.setzeGeschossKuerzel(store.projektMappe("p-v6"), "gs-eg", "E0"));
+  t("Wandnummer: Kuerzelaenderung benennt alle Waende des Geschosses im Wandspeicher um",
+    store.holeElement(idNeu2).name === "Wand_E0-5" && store.holeElement(idNeu2).wandelement.name === "Wand_E0-5"
+    && store.holeElement(idKopie).name === "Wand_E0-6" && store.holeElement("v-a").name === "Wand_OG-1");
+
+  // (g) Neu berechnen — die einzige Stelle, an der der Zaehler sinken darf
+  const reihenfolge = PM.alleWaende(store.projektMappe("p-v6")).map((e) => e.wand.id);
+  const neu = store.nummeriereWaendeNeu("g-v6");
+  t("Wandnummer: neu berechnen nummeriert lueckenlos in Mappenreihenfolge und setzt den Zaehler",
+    PM.alleWaende(neu).map((e) => e.wand.nr).join(",") === reihenfolge.map((_, i) => i + 1).join(",")
+    && neu.gebaeude[0].wand_nr_max === reihenfolge.length);
+  t("Wandnummer: neu berechnen zieht die Namen in den Wandspeicher",
+    reihenfolge.every((id, i) => store.holeElement(id).name.endsWith("-" + (i + 1))));
+  t("Wandnummer: neu berechnen fuer ein unbekanntes Gebaeude wird benannt abgewiesen",
+    (() => { try { store.nummeriereWaendeNeu("g-gibtsnicht"); return false; }
+             catch (e) { return /Unbekanntes Gebäude/.test(e.message); } })());
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);

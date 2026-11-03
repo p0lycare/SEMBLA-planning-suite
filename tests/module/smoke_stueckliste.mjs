@@ -12,7 +12,7 @@ import { buildWall, Opening, wirksameZwischenpunkte } from "../../docs/shared/se
 import { baueDateien, einbauteileCsv, stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, wirksameMengen, zuschnittCsv } from "../../docs/shared/sembla-export.js";
 import { einbauteile, semblaBomItems as SEMBLA_BOM_ITEMS, semblaBomSets } from "../../docs/shared/sembla-bom.js";
 import { umfang, gesamtDaten, standText } from "../../docs/shared/sembla-gesamtstueckliste.js";
-import { leereMappe, fuegeGeschossHinzu, setzeWand } from "../../docs/shared/sembla-projektmappe.js";
+import { leereMappe, fuegeGeschossHinzu, setzeWand, setzeGeschossKuerzel } from "../../docs/shared/sembla-projektmappe.js";
 import { blattHtml } from "../../docs/shared/sembla-zeichnung.js";
 import { berechneAufbau } from "../../docs/shared/sembla-aufbau.js";
 import { standardEingaben, mengenKennung } from "../../docs/shared/storage.js";
@@ -146,6 +146,8 @@ const W=Object.assign(buildWall('Testwand', 2000, 2600, [new Opening(5,11,0,10,'
   null, {top_connection:'blech'}), { abdichtung:'abgedichtet' });
 // `_name` ist der Name des WANDEINTRAGS (#70) — getrennt von `_we.name`, genau wie im echten
 // Speicher: `storage.umbenennen()` aendert nur den Eintrag, nie das gerechnete Wandelement.
+// (Seit 03.11.2026 gilt das nur noch fuer NICHT eingetragene Waende; eine eingetragene heisst
+// `Wand_<Kuerzel>-<Nr>` in Eintrag UND Wandelement — geprueft im #94-Block am echten Speicher.)
 // Standard `null` = kein Eintragsname, damit alle Altpruefungen weiter den Wandelementnamen sehen.
 let _subs=[]; let _aktiv='w-1'; let _we=W; let _eg=egVoll(); let _merges=[]; let _kat=KATALOG;
 let _name=null;
@@ -1024,7 +1026,10 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     k2.includes('Südwand OG') && !k2.includes('Nordwand EG') && SL.wall.length_mm===3000);
 
   // (3) Umbenennen bei GLEICHER id: storage.umbenennen aendert nur den Eintrag, nicht die id —
-  // ohne Nachzug stuende hier weiter die alte Bezeichnung.
+  // ohne Nachzug stuende hier weiter die alte Bezeichnung. Die freien Namen hier stehen fuer
+  // eine NICHT eingetragene Wand (nur die ist seit 03.11.2026 frei umbenennbar); fuer eine
+  // eingetragene wechselt der Name bei gleicher id ueber das Geschosskuerzel — das prueft der
+  // #94-Block am echten Speicher.
   _name='Südwand OG (umbenannt)'; _subs.forEach(cb=>cb());
   ok('#70 Umbenennen bei gleicher id wird nachgezogen',
     document.getElementById('printkopf').innerHTML.includes('Südwand OG (umbenannt)'));
@@ -1069,11 +1074,6 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
 // Aggregation und der Preisschalter.
 {
   const OPT={rod_lengths_mm:[1000,500], rod_rest_mm:300};
-  const EL={
-    'w-a':{id:'w-a',name:'Wand A',wandelement:buildWall('Wand A',3000,3000,[new Opening(6,10,4,10,'fenster')],null,OPT)},
-    'w-b':{id:'w-b',name:'Wand B',wandelement:buildWall('Wand B',2000,2600,[new Opening(5,11,0,10,'tuer')],null,OPT)},
-    'w-c':{id:'w-c',name:'Wand C',wandelement:buildWall('Wand C',2500,2400,[],null,OPT)},
-  };
   let MAPPE=leereMappe('Projekt M4',{gebaeude:'Haus',geschoss:'EG'});
   const GEB=MAPPE.gebaeude[0].id, EG=MAPPE.gebaeude[0].geschosse[0].id;
   const rOg=fuegeGeschossHinzu(MAPPE,GEB,'OG'); MAPPE=rOg.mappe; const OG=rOg.id;
@@ -1081,6 +1081,19 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
   MAPPE=setzeWand(MAPPE,EG,{id:'w-b',name:'Wand B'});
   MAPPE=setzeWand(MAPPE,OG,{id:'w-c',name:'Wand C'});
   MAPPE=setzeWand(MAPPE,EG,{id:'w-weg',name:'Verwaiste Wand'});   // ohne Wandelement ([L-4])
+  // Entscheid 03.11.2026: eine eingetragene Wand heisst IMMER `Wand_<Kuerzel>-<Nr>` (Nummer
+  // je Gebaeude in Mappenreihenfolge) — der mitgegebene Name wird ueberschrieben. Die
+  // Wandelemente tragen im echten Speicher denselben Namen (storage zieht ihn nach); das
+  // Double bildet das nach, statt einen Namen zu fuehren, den es so nicht mehr gibt.
+  const mappenName=(id)=>MAPPE.gebaeude.flatMap(g=>g.geschosse).flatMap(gs=>gs.waende).find(w=>w.id===id).name;
+  ok('#44 Voraussetzung: die Mappe vergibt die Wandnamen je Gebäude (EG/OG, Nr. 1–4)',
+    ['w-a','w-b','w-c','w-weg'].map(mappenName).join('|')==='Wand_EG-1|Wand_EG-2|Wand_OG-3|Wand_EG-4');
+  const NAME_WAISE=mappenName('w-weg');
+  const EL={
+    'w-a':{id:'w-a',name:mappenName('w-a'),wandelement:buildWall(mappenName('w-a'),3000,3000,[new Opening(6,10,4,10,'fenster')],null,OPT)},
+    'w-b':{id:'w-b',name:mappenName('w-b'),wandelement:buildWall(mappenName('w-b'),2000,2600,[new Opening(5,11,0,10,'tuer')],null,OPT)},
+    'w-c':{id:'w-c',name:mappenName('w-c'),wandelement:buildWall(mappenName('w-c'),2500,2400,[],null,OPT)},
+  };
 
   storeMock.holeMappe=()=>MAPPE;
   storeMock.aktivesGeschoss=()=>({gebaeude:MAPPE.gebaeude[0], geschoss:MAPPE.gebaeude[0].geschosse[0]});
@@ -1145,7 +1158,7 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       && d.positionen.every(p=>Math.abs(p.menge-p.herkunft.reduce((a,h)=>a+h.menge,0))<1e-9));
     ok(`#44 ${ebene}: verwaiste Wand steht als benannte Lücke am Blatt`, (()=>{
       const l=document.getElementById('luecken');
-      return !l.hidden && /Verwaiste Wand/.test(l.innerHTML) && /verwaister Eintrag/.test(l.innerHTML)
+      return !l.hidden && l.innerHTML.includes(NAME_WAISE) && /verwaister Eintrag/.test(l.innerHTML)
         && /UNVOLLSTÄNDIG/.test(l.innerHTML); })());
     ok(`#44 ${ebene}: keine Nullposition für die fehlende Wand`,
       d.positionen.every(p=>p.menge>0 || p.status==='nicht_erforderlich'));
@@ -2060,6 +2073,19 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
   const id2 = echterStore.speichere('Driftwand B', W2);
   echterStore.aendereMappe(m => setzeWand(setzeWand(m, GS, { id:id1, name:'Driftwand A' }),
     GS, { id:id2, name:'Driftwand B' }));
+  // Entscheid 03.11.2026: das Eintragen vergibt die Wandnamen `Wand_<Kuerzel>-<Nr>` und zieht
+  // sie in den Wandspeicher (Eintrag UND `wandelement.name`) — das geschieht HIER, beim
+  // Eintragen, also vor Modul 4. Damit der spaetere Nachweis „Modul 4 hat kein Wandelement
+  // angefasst" streng bleibt, wird erst geprueft, dass sich dabei ausschliesslich der Name
+  // geaendert hat, und W1/W2 dann auf genau diesen Stand nachgezogen (gleiche
+  // Schluesselreihenfolge, `name` gibt es schon).
+  ok('#94 realer Pfad: das Eintragen benennt die Waende Wand_EG-1/-2 und aendert sonst nichts',
+    [[id1,W1,'Wand_EG-1'],[id2,W2,'Wand_EG-2']].every(([id,w,soll]) => {
+      const e=echterStore.holeElement(id);
+      return e.name===soll && e.wandelement.name===soll
+        && JSON.stringify(e.wandelement)===JSON.stringify({ ...w, name:soll }); }));
+  W1.name = echterStore.holeElement(id1).wandelement.name;
+  W2.name = echterStore.holeElement(id2).wandelement.name;
   echterStore.setzeAktivesGeschoss(GS);
   echterStore.setzeAktiv(id1);
   echterStore.vorbelegeProduktrollen(null, id1);
@@ -2220,6 +2246,30 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
     ok('#94 realer Pfad: Modul 4 hat kein Wandelement angefasst ([P-1])',
       JSON.stringify(echterStore.holeElement(id1).wandelement)===JSON.stringify(W1)
       && JSON.stringify(echterStore.holeElement(id2).wandelement)===JSON.stringify(W2));
+  }
+
+  // #70 am ECHTEN Speicher: der Blattkopf folgt dem Namen bei GLEICHER id. Seit dem Entscheid
+  // 03.11.2026 ist der Name einer eingetragenen Wand nicht mehr frei umbenennbar
+  // (`storage.umbenennen` weist ab) — er aendert sich bei gleicher Kennung ueber das
+  // Geschosskuerzel (Modul 0). Genau dieser Weg wird gefahren und danach zurueckgestellt.
+  {
+    SL4.setzeEbene('wand');
+    const kopf = () => document.getElementById('printkopf').innerHTML;
+    const vorher = SL4.wandname === 'Wand_EG-1' && kopf().includes('Wand_EG-1');
+    let abgewiesen = false;
+    try { echterStore.umbenennen(id1, 'Freier Name'); } catch { abgewiesen = true; }
+    ok('#70 realer Pfad: eine eingetragene Wand ist nicht frei umbenennbar (Name bleibt)',
+      vorher && abgewiesen && echterStore.holeElement(id1).name === 'Wand_EG-1'
+      && SL4.wandname === 'Wand_EG-1');
+    echterStore.setzeMappe(setzeGeschossKuerzel(echterStore.holeMappe(), GS, 'E1'));
+    ok('#70 realer Pfad: Kuerzelwechsel bei gleicher id wird im Blattkopf nachgezogen',
+      echterStore.aktivId() === id1 && echterStore.holeElement(id1).name === 'Wand_E1-1'
+      && SL4.wandname === 'Wand_E1-1' && kopf().includes('Wand_E1-1') && !kopf().includes('Wand_EG-1'));
+    echterStore.setzeMappe(setzeGeschossKuerzel(echterStore.holeMappe(), GS, 'EG'));
+    ok('#70 realer Pfad: zurueckgestellt — Name, Blattkopf und Wandelemente wie zuvor',
+      SL4.wandname === 'Wand_EG-1' && kopf().includes('Wand_EG-1')
+      && JSON.stringify(echterStore.holeElement(id1).wandelement) === JSON.stringify(W1)
+      && JSON.stringify(echterStore.holeElement(id2).wandelement) === JSON.stringify(W2));
   }
 }
 
@@ -2388,7 +2438,7 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
     /import \* as AX from '\.\/shared\/sembla-ax\.js'/.test(html) && /AX=S\.AX;/.test(html)
     && !/function (benennung|modalDialog|tooltips|ungueltig)\(/.test(html));
   ok('#145 (must-not) die Zugaenglichkeit hat kein gespeichertes Feld angelegt',
-    echterStore.SCHEMA_VERSION===6 && echterStore.PROJEKT_VERSION===2
+    echterStore.SCHEMA_VERSION === 7 && echterStore.PROJEKT_VERSION===2
     && !/aria|ax-b-|ax-tip/i.test(localStorage.getItem('sembla:elemente')||''));
   echterStore.setzeMengenUebersteuerung(KEN, null, WID);
   echterStore.setzeKommentar(KEN, null, WID);

@@ -173,6 +173,18 @@
         Produkte, Preise und Baugruppen gepflegt; zugeordnet wird ein Katalog hier.</span>
     </div>
     <div class="hint" id="pp-katalog-hinweis"></div>
+    <!-- Wandnummern je Gebaeude (Entscheid 03.11.2026). Nur beim BEARBEITEN eines
+         bestehenden Projekts sichtbar; die Aktion ist eine eigene, ausdruecklich
+         bestaetigte Schreibaktion und laeuft nicht ueber „Speichern“. -->
+    <div id="pp-nummern" hidden>
+      <div class="subh">Wandnummern <span class="muted" style="text-transform:none;letter-spacing:0">
+        · je Gebäude eindeutig, Name = Wand_&lt;Geschosskürzel&gt;-&lt;Nummer&gt;</span></div>
+      <div id="pp-nummern-liste"></div>
+      <div class="hint">Wandnummern werden <b>nie wieder vergeben</b> und rücken nicht nach: eine
+        gelöschte Nummer bleibt eine Lücke. „Wandnummern neu berechnen“ nummeriert alle Wände des
+        Gebäudes lückenlos neu (Geschoss für Geschoss, Wände in der Listenreihenfolge) —
+        <b>bereits ausgegebene Pläne passen danach nicht mehr</b>.</div>
+    </div>
     <div class="msg" id="pp-msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
       <button class="btn-s" id="pp-cancel">Abbrechen</button>
@@ -189,11 +201,17 @@
       Modul&nbsp;1 frei überschrieben und nie zurückgeschrieben ([L-5]).</p>
     <div class="row">
       <div class="field"><label for="gp-name">Bezeichnung</label>
-        <input id="gp-name" type="text" style="width:200px" placeholder="z. B. EG"></div>
+        <input id="gp-name" type="text" style="width:200px" placeholder="z. B. Erdgeschoss"></div>
+      <div class="field"><label for="gp-kuerzel">Kürzel (Pflicht)</label>
+        <input id="gp-kuerzel" class="s" type="text" style="width:60px" placeholder="EG"
+               autocomplete="off" aria-describedby="gp-kuerzel-b"></div>
       <div class="field"><label for="gp-hoehe">Standard-Wandhöhe (mm)</label>
         <input id="gp-hoehe" class="s" type="number" step="200" min="200" placeholder="leer = keine"
                aria-describedby="gp-sub"></div>
     </div>
+    <div class="hint" id="gp-kuerzel-b">Das <b>Kürzel</b> bildet die Wandnamen dieses Geschosses
+      (<b>Wand_EG-12</b>): 1–2 Zeichen aus Großbuchstaben und Ziffern (EG, OG, DG, E1, U1 …), je
+      Gebäude eindeutig. Eine Änderung benennt alle Wände des Geschosses um — ihre Nummern bleiben.</div>
     <div class="hint" id="gp-hinweis"></div>
 
     <div class="subh">Geschossplan <span class="muted" style="text-transform:none;letter-spacing:0">
@@ -223,20 +241,20 @@
   </div>
 </div>
 
-<!-- Wand importieren/umbenennen. NEUE Wände entstehen seit Issue #56 ausschliesslich
+<!-- Wand importieren / Wand anzeigen. NEUE Wände entstehen seit Issue #56 ausschliesslich
      durch Zeichnen im Geschosseditor — hier gibt es weder Anlageknopf noch
-     Neuanlagedialog. Beim Umbenennen ist NUR der Name änderbar; Länge, Höhe und
-     Öffnungen gehören dem Wandelement ([P-1]), die Länge einer verorteten Wand
-     wird im Geschosseditor geführt. -->
+     Neuanlagedialog. Der Wandname ist seit dem Entscheid vom 03.11.2026 NICHT mehr frei:
+     er wird aus Geschosskürzel und Wandnummer gebildet (Wand_EG-12) und hier nur
+     angezeigt; Länge, Höhe und Öffnungen gehören dem Wandelement ([P-1]). -->
 <div class="overlay" id="wp-overlay" hidden>
   <div class="modal" id="wp-modal">
     <h3 id="wp-titel">Wand importieren</h3>
     <p class="sub" id="wp-sub">Eine gespeicherte Wanddatei wird im gewählten Geschoss eingetragen —
       <b>am Geschossursprung</b>, damit sie im Geschosseditor sofort sichtbar ist; sie ist dort
       <b>unbemaßt</b> und frei verschiebbar (#88).</p>
-    <div class="row">
+    <div class="row" id="wp-name-zeile">
       <div class="field"><label for="f-name">Name</label>
-        <input id="f-name" type="text" placeholder="z. B. Wand A" value="Neue Wand"></div>
+        <input id="f-name" type="text" readonly></div>
     </div>
     <div class="row" style="margin-top:12px" id="wp-quellen">
       <input id="f-import" class="ax-datei" type="file" accept=".json,application/json"
@@ -261,8 +279,7 @@
     <div class="hint" id="wp-hinweis"></div>
     <div class="msg" id="msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
-      <button class="btn-s" id="wp-cancel">Abbrechen</button>
-      <button class="btn-p" id="btn-neu" hidden>Namen speichern</button>
+      <button class="btn-s" id="wp-cancel">Schließen</button>
     </div>
   </div>
 </div>
@@ -276,8 +293,9 @@
       Name prüfen und bestätigen — „Abbrechen“ legt kein Element an.</p>
     <div class="field" style="width:100%">
       <label for="imp-name">Name des Wandelements</label>
-      <input id="imp-name" type="text" style="width:100%">
+      <input id="imp-name" type="text" style="width:100%" aria-describedby="imp-name-hinweis">
     </div>
+    <div class="hint" id="imp-name-hinweis" hidden></div>
     <div class="zus" id="imp-info"></div>
     <div class="msg" id="imp-msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
@@ -635,8 +653,8 @@
                 + 'dabei aufgehoben statt auf Fremdes gebogen.' }))
         + knopf('prj-bearbeiten', m.projekt.id, 'Bearbeiten', 'btn-s', false, '',
             { bezug: `Projekt ${m.projekt.name}`,
-              beschreibung: 'Öffnet den Dialog für Projektname, Bauherrenschaft und die '
-                + 'Zuordnung des Bauteilkatalogs.' })
+              beschreibung: 'Öffnet den Dialog für Projektname, Bauherrenschaft, die '
+                + 'Zuordnung des Bauteilkatalogs und die Wandnummern.' })
         // EIN Exportzugang je Eintrag (#67): der Dialog leitet seinen Umfang aus dem
         // ANGEKLICKTEN Projekt ab und setzt dabei keinen Zeiger um ([L-10]) — deshalb
         // ist der Knopf auch an nicht aktiven Projekten nutzbar.
@@ -657,7 +675,7 @@
       const kinder = gsListe.map(gs => trGeschossHtml(m, gs, istAktivPrj, gsAktiv, wAktiv)).join('')
         + plusKnopf('gs-neu', m.projekt.id, '+ Geschoss hinzufügen',
             `Geschoss in Projekt ${m.projekt.name} hinzufügen`,
-            'Öffnet den Dialog für Bezeichnung und Standard-Wandhöhe des neuen Geschosses.');
+            'Öffnet den Dialog für Bezeichnung, Kürzel und Standard-Wandhöhe des neuen Geschosses.');
       return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}<div class="kinder">${kinder}</div></div>`;
     }).join('');
   }
@@ -666,7 +684,8 @@
     const istAktiv = !!(gsAktiv && gsAktiv.id === gs.id);
     const offen = KLAPP.has(gs.id);
     const vg = MAPPE.hoehenVorgabe(gs.hoehe_mm);
-    const meta = (gs.hoehe_mm != null ? `${gs.hoehe_mm} mm` + (vg.passt ? ` = ${vg.lagen} Lagen` : ' ⚠ kein Vielfaches von 200 mm')
+    const meta = `Kürzel ${gs.kuerzel} · `
+      + (gs.hoehe_mm != null ? `${gs.hoehe_mm} mm` + (vg.passt ? ` = ${vg.lagen} Lagen` : ' ⚠ kein Vielfaches von 200 mm')
                                       : 'ohne Standard-Wandhöhe')
       + ` · ${gs.waende.length} Wand/Wände · ` + (gs.plan ? 'Plan hinterlegt' : 'kein Plan');
     const kopf = `<div class="kopf">`
@@ -692,7 +711,7 @@
             beschreibung: 'Öffnet den Exportdialog für genau dieses Geschoss.' })
       + knopf('gs-bearbeiten', gs.id, 'Bearbeiten', 'btn-s', false, '',
           { bezug: `Geschoss ${gs.name}`,
-            beschreibung: 'Öffnet den Dialog für Bezeichnung und Standard-Wandhöhe.' })
+            beschreibung: 'Öffnet den Dialog für Bezeichnung, Kürzel und Standard-Wandhöhe.' })
       + knopf('gs-loeschen', gs.id, 'Löschen', 'btn-d', false, '',
           { bezug: `Geschoss ${gs.name}`,
             beschreibung: 'Entfernt Struktur, Lage und Bemaßungen dieses Geschosses. Ob die '
@@ -739,7 +758,8 @@
           { bezug: wandBezug,
             beschreibung: 'Setzt die Wand aktiv und wechselt in die Wandplanung.' }) : '')
       + (el ? knopf('wand-bearbeiten', w.id, 'Bearbeiten', 'btn-s', false, '',
-          { bezug: wandBezug, beschreibung: 'Öffnet den Dialog zum Umbenennen dieser Wand.' }) : '')
+          { bezug: wandBezug, beschreibung: 'Zeigt Name und Kennwerte dieser Wand. Der Name wird '
+              + 'aus Geschosskürzel und Wandnummer gebildet und ist nicht frei änderbar.' }) : '')
       + (el ? knopf('wand-export', w.id, 'Exportieren', 'btn-s', false, '',
           { bezug: wandBezug, beschreibung: 'Öffnet den Exportdialog für genau diese Wand.' }) : '')
       + knopf('wand-loeschen', w.id, 'Löschen', 'btn-d', false, '',
@@ -952,8 +972,10 @@
       const init = trInitialLage(gs.id, id);
       try {
         store.verorteWand(id, gs.id, { name: e ? e.name : id, lage: init.lage });
-        trZeige(`„${e ? e.name : id}“ ist jetzt in Geschoss „${gs.name}“ eingetragen — `
-          + trInitialText(init) + '.', true);
+        // Mit dem Eintragen bekommt die Wand die naechste Wandnummer des Gebaeudes ([L-14]).
+        const neuName = (store.wandVerortung(id) || { wand: {} }).wand.name;
+        trZeige(`„${e ? e.name : id}“ ist jetzt in Geschoss „${gs.name}“ eingetragen`
+          + (neuName ? ` und heißt „${neuName}“` : '') + ' — ' + trInitialText(init) + '.', true);
       } catch (err) { trZeige('Nicht eingetragen: ' + fehlerText(err), false); }
     }
   }
@@ -1512,6 +1534,7 @@
     // Nur die ANLAGE belegt den Standardkatalog vor — ein bestehendes Projekt behaelt
     // seine (auch bewusst leere) Zuordnung und wird nie automatisch umgestellt (#68).
     ppKatalogListe(m ? (m.katalog || '') : '', !m);
+    ppNummern(m);
     ppZeige('', true);
     ppOverlay.hidden = false;
     ppAX.oeffne(letzterAusloeser || $('tr-projekt-neu'));
@@ -1521,8 +1544,70 @@
   }
   function ppSchliesse(){ ppOverlay.hidden = true; ppId = null; ppAX.schliesse(); }
 
+  /**
+   * Wandnummern je Gebaeude im Bearbeiten-Dialog: Stand des Zaehlers und die Aktion
+   * „Wandnummern neu berechnen“ (Entscheid 03.11.2026) — nur auf Gebaeudeebene, nur
+   * fuer ein BESTEHENDES Projekt. Reine Anzeige bis zum Klick.
+   * @param {object|null} m
+   */
+  function ppNummern(m, nachNeuberechnung){
+    ppNummernNeuGesetzt = !!nachNeuberechnung;
+    $('pp-nummern').hidden = !m;
+    if (!m) { $('pp-nummern-liste').innerHTML = ''; return; }
+    $('pp-nummern-liste').innerHTML = m.gebaeude.map(g => {
+      const anz = g.geschosse.reduce((n, gs) => n + gs.waende.length, 0);
+      const bezug = `Gebäude ${g.name}`;
+      const b = AX.benennung(AX.objektAktion('Wandnummern neu berechnen', bezug),
+        'Nummeriert alle Wände dieses Gebäudes lückenlos neu. Bereits ausgegebene Pläne passen '
+        + 'danach nicht mehr. Es wird vorher nachgefragt.');
+      return `<div class="row" style="align-items:center;gap:10px">`
+        + `<span>${m.gebaeude.length > 1 ? '<b>' + esc(g.name) + '</b> · ' : ''}${anz} Wand/Wände · `
+        + `höchste vergebene Nummer ${g.wand_nr_max} · nächste Wand bekommt `
+        + `<b>${g.wand_nr_max + 1}</b></span>`
+        + `<button class="btn-s" ${b.attrs} data-pp-nummern="${esc(g.id)}">Wandnummern neu berechnen…</button>`
+        + b.html + `</div>`;
+    }).join('');
+  }
+
+  $('pp-nummern-liste').addEventListener('click', (ev) => {
+    const btn = ev.target.closest ? ev.target.closest('button[data-pp-nummern]') : null;
+    if (!btn) return;
+    ppNummernNeu(btn.dataset.ppNummern);
+  });
+
+  /** „Wandnummern neu berechnen“ — erst nach ausdruecklicher Bestaetigung mit Warnung. */
+  function ppNummernNeu(gebaeudeId){
+    const m = ppId ? store.projektMappe(ppId) : null;
+    const g = m ? m.gebaeude.find(x => x.id === gebaeudeId) : null;
+    if (!g) { ppZeige('Gebäude ist nicht mehr vorhanden.', false); return; }
+    const anz = g.geschosse.reduce((n, gs) => n + gs.waende.length, 0);
+    if (!confirm(`Wandnummern von „${g.name}“ neu berechnen?\n\n`
+      + `Alle ${anz} Wand/Wände werden lückenlos neu nummeriert (Geschoss für Geschoss, Wände in `
+      + 'der Listenreihenfolge), der Zähler wird auf die höchste Nummer gesetzt.\n\n'
+      + 'ACHTUNG: Bereits ausgegebene Pläne, Stücklisten und Exporte passen danach nicht mehr zu '
+      + 'den Wandnamen.')) {
+      ppZeige('Abgebrochen — die Wandnummern bleiben unverändert.', true);
+      return;
+    }
+    try {
+      const neu = store.nummeriereWaendeNeu(gebaeudeId);
+      ppNummern(neu, true);
+      const gNeu = neu.gebaeude.find(x => x.id === gebaeudeId);
+      ppZeige(`Wandnummern neu berechnet: ${anz} Wand/Wände, nächste Nummer ${gNeu.wand_nr_max + 1}. `
+        + 'Bereits ausgegebene Pläne passen nicht mehr.', true);
+    } catch (e) { ppZeige('Nicht neu berechnet: ' + fehlerText(e), false); }
+  }
+
   /** Abbruch (Button, Escape, Klick neben den Dialog): schliesst und meldet — schreibt nichts. */
-  function ppAbbruch(){ ppSchliesse(); trZeige('Abgebrochen — es wurde nichts gespeichert.', true); }
+  // Eine bestaetigte Neuberechnung der Wandnummern ist schon geschrieben — das sagt der
+  // Abbruch dann auch, statt „nichts gespeichert“ zu behaupten.
+  let ppNummernNeuGesetzt = false;
+  function ppAbbruch(){
+    const nr = ppNummernNeuGesetzt;
+    ppSchliesse();
+    trZeige(nr ? 'Dialog geschlossen — die Wandnummern wurden neu berechnet, alles Übrige blieb ungespeichert.'
+      : 'Abgebrochen — es wurde nichts gespeichert.', true);
+  }
   $('pp-cancel').addEventListener('click', ppAbbruch);
   ppOverlay.addEventListener('click', (ev) => { if (ev.target === ppOverlay) ppAbbruch(); });
 
@@ -1674,6 +1759,9 @@
     $('gp-titel').textContent = ort ? 'Geschoss bearbeiten: ' + ort.geschoss.name
       : 'Geschoss anlegen in „' + m.projekt.name + '“';
     $('gp-name').value = ort ? ort.geschoss.name : '';
+    $('gp-kuerzel').value = ort ? (ort.geschoss.kuerzel || '') : '';
+    gpKuerzelVon = ort ? 'nutzer' : 'vorschlag';
+    if (!ort) gpKuerzelVorschlag();
     $('gp-hoehe').value = ort && ort.geschoss.hoehe_mm != null ? String(ort.geschoss.hoehe_mm) : '';
     $('gp-hinweis').innerHTML = '';
     gpZeige('', true);
@@ -1684,6 +1772,22 @@
     gpPlanInfo().catch(() => {});
   }
   function gpSchliesse(){ gpOverlay.hidden = true; gpProjektId = null; gpGeschossId = null; gpAX.schliesse(); }
+
+  // Das Kuerzel wird beim ANLEGEN aus der Bezeichnung vorgeschlagen, bis man es selbst
+  // anfasst; danach bleibt es stehen. Es ist ein Vorschlag im Feld — gespeichert wird
+  // erst mit „Speichern“, und dort wird es geprueft.
+  let gpKuerzelVon = 'vorschlag';
+  function gpKuerzelVorschlag(){
+    if (gpKuerzelVon !== 'vorschlag') return;
+    const m = store.projektMappe(gpProjektId);
+    const geb = m && m.gebaeude[0];
+    const belegt = geb ? geb.geschosse.map(gs => gs.kuerzel) : [];
+    const name = String($('gp-name').value || '').trim()
+      || 'Geschoss ' + (m ? MAPPE.alleGeschosse(m).length + 1 : 1);
+    try { $('gp-kuerzel').value = MAPPE.kuerzelVorschlag(name, belegt); } catch { $('gp-kuerzel').value = ''; }
+  }
+  $('gp-name').addEventListener('input', gpKuerzelVorschlag);
+  $('gp-kuerzel').addEventListener('input', () => { gpKuerzelVon = 'nutzer'; });
 
   function gpAbbruch(){ gpSchliesse(); trZeige('Abgebrochen — es wurde nichts gespeichert.', true); }
   $('gp-cancel').addEventListener('click', gpAbbruch);
@@ -1704,17 +1808,23 @@
     const m = store.projektMappe(gpProjektId);
     if (!m) { gpZeige('Projekt ist nicht mehr vorhanden.', false); return; }
     const vg = MAPPE.hoehenVorgabe(hoehe);
+    // Pflichtfeld: ein leeres Kuerzel wird benannt abgewiesen, nie still vorbelegt.
+    const kuerzel = String($('gp-kuerzel').value || '').trim();
+    if (!kuerzel) { gpZeige('Nicht gespeichert: Das Geschosskürzel fehlt — es ist Pflicht (1–2 Zeichen, z. B. EG, OG, E1).', false); return; }
+    let kuerzelGeaendert = false;
     try {
       let n = m, id = gpGeschossId;
       if (!id) {
         const name = String($('gp-name').value || '').trim()
           || 'Geschoss ' + (MAPPE.alleGeschosse(m).length + 1);
-        const r = MAPPE.fuegeGeschossHinzu(m, m.gebaeude[0].id, name, hoehe == null ? undefined : hoehe);
+        const r = MAPPE.fuegeGeschossHinzu(m, m.gebaeude[0].id, name, hoehe == null ? undefined : hoehe, kuerzel);
         n = r.mappe; id = r.id;
       } else {
         const name = String($('gp-name').value || '').trim();
         n = MAPPE.setzeGeschossHoehe(m, id, hoehe);
         if (name) n = MAPPE.benenneUm(n, id, name);
+        const vorher = MAPPE.findeGeschoss(n, id).geschoss.kuerzel;
+        if (MAPPE.normKuerzel(kuerzel) !== vorher) { n = MAPPE.setzeGeschossKuerzel(n, id, kuerzel); kuerzelGeaendert = true; }
       }
       store.setzeMappe(n);
       const neu = !gpGeschossId;
@@ -1726,7 +1836,10 @@
         }
       }
       gpSchliesse();
-      trZeige((neu ? 'Geschoss angelegt' : 'Geschoss geändert') + '. '
+      const gsNeu = MAPPE.findeGeschoss(store.projektMappe(m.projekt.id), id).geschoss;
+      trZeige((neu ? 'Geschoss angelegt' : 'Geschoss geändert') + ` (Kürzel ${gsNeu.kuerzel}). `
+        + (kuerzelGeaendert && gsNeu.waende.length
+          ? `${gsNeu.waende.length} Wand/Wände heißen jetzt Wand_${gsNeu.kuerzel}-… — ihre Nummern bleiben. ` : '')
         + (vg.hoehe_mm == null ? 'Ohne Standard-Wandhöhe — neue Wände erhalten keine Höhenvorgabe ([L-5]).'
            : vg.passt ? `Standard-Wandhöhe ${vg.hoehe_mm} mm = ${vg.lagen} Lagen à 200 mm.` : vg.hinweis)
         + ' Bestehende Wandelemente bleiben unverändert ([L-5]).', true);
@@ -1759,30 +1872,33 @@
     if (!bearbeiten && !ort) { trZeige('Unbekanntes Geschoss.', false); return; }
     const gs = ort ? ort.geschoss : null;
 
-    $('wp-titel').textContent = bearbeiten ? 'Wand umbenennen: ' + (el ? el.name : wandId)
+    const wandName = ort && ort.wand ? ort.wand.name : (el ? el.name : wandId);
+    $('wp-titel').textContent = bearbeiten ? 'Wand: ' + wandName
       : 'Wand importieren' + (gs ? ' in „' + gs.name + '“' : '');
     $('wp-sub').innerHTML = bearbeiten
-      ? 'Hier ist nur der <b>Name</b> änderbar. Öffnungen und Auslegung gehören in '
-        + '<b>Modul&nbsp;1</b>; die <b>Länge</b> einer verorteten Wand wird im '
-        + '<b>Geschosseditor</b> geführt ([P-1]).'
+      ? 'Der <b>Name</b> wird aus <b>Geschosskürzel</b> und <b>Wandnummer</b> gebildet und ist nicht '
+        + 'frei änderbar — das Kürzel wird am Geschoss gepflegt, die Nummer bleibt beim Verschieben '
+        + 'innerhalb des Gebäudes erhalten. Öffnungen und Auslegung gehören in <b>Modul&nbsp;1</b>; die '
+        + '<b>Länge</b> einer verorteten Wand wird im <b>Geschosseditor</b> geführt ([P-1]).'
       : 'Eine gespeicherte Wanddatei wird im Geschoss eingetragen — <b>am Geschossursprung</b>, damit '
         + 'sie im Geschosseditor sofort sichtbar ist; sie ist dort <b>unbemaßt</b> und frei '
-        + 'verschiebbar (#88).';
+        + 'verschiebbar (#88). Sie bekommt die <b>nächste Wandnummer</b> des Gebäudes.';
     $('wp-quellen').hidden = bearbeiten;
     $('wp-neu-hinweis').hidden = bearbeiten;
-    // Der einzige Schreibknopf dieses Popups ist das Umbenennen — angelegt wird hier nichts (#56).
-    $('btn-neu').hidden = !bearbeiten;
+    // Dieses Popup schreibt nichts mehr: der Wandname ist reine Anzeige, angelegt wird
+    // hier nichts (#56) — der Import laeuft ueber den eigenen Bestaetigungsdialog.
+    $('wp-name-zeile').hidden = !bearbeiten;
 
     if (bearbeiten) {
       const w = el ? el.wandelement : null;
-      $('f-name').value = el ? el.name : '';
+      $('f-name').value = wandName;
       $('wp-hinweis').innerHTML = w
         ? `Wandtyp: <b>${esc(WANDTYP_LABEL[store.normWandtyp(w.wandtyp)])}</b> · Länge: `
           + `${w.length_mm} mm · Höhe: ${w.height_mm} mm · Öffnungen: `
           + `${Array.isArray(w.openings) ? w.openings.length : 0}`
         : 'Zu diesem Eintrag gibt es kein Wandelement (verwaister Eintrag, [L-4]).';
     } else {
-      $('f-name').value = 'Neue Wand';
+      $('f-name').value = '';
       $('wp-hinweis').innerHTML = '';
     }
     zeige('', true);
@@ -1795,19 +1911,8 @@
   $('wp-cancel').addEventListener('click', wpAbbruch);
   wpOverlay.addEventListener('click', (ev) => { if (ev.target === wpOverlay) wpAbbruch(); });
 
-  // Der einzige Schreibweg dieses Popups: UMBENENNEN. Eine neue Wand entsteht seit
-  // Issue #56 ausschliesslich durch Zeichnen im Geschosseditor — Modul 0 hat dafuer
-  // weder Knopf noch Dialog und verweist nur noch dorthin. Der Dateiimport bleibt
-  // unveraendert erhalten (er liest ein FERTIGES Wandelement und legt keines an).
-  $('btn-neu').addEventListener('click', () => {
-    if (!wpWandId) return;
-    const name = String($('f-name').value || '').trim();
-    if (!name) { zeige('Bitte einen Namen eingeben.', false); return; }
-    try { store.umbenennen(wpWandId, name); }
-    catch (e) { zeige('Nicht gespeichert: ' + fehlerText(e), false); return; }
-    wpSchliesse();
-    trZeige(`Wand umbenannt: „${name}“.`, true);
-  });
+  // Das fruehere UMBENENNEN ist mit dem Entscheid vom 03.11.2026 entfallen: der Name
+  // einer eingetragenen Wand ist `Wand_<Kuerzel>-<Nr>` und wird nur angezeigt.
 
   /**
    * Importierte Wand im Geschoss eintragen — seit #88 mit einer sichtbaren
@@ -1880,6 +1985,14 @@
     return zeilen.map(([k, v]) => `<div><b>${esc(k)}:</b> ${esc(v)}</div>`).join('');
   }
 
+  /** Der Name, den eine importierte Wand im Zielgeschoss bekommt (null = kein Geschoss). */
+  function impZielName(geschossId){
+    const gsId = geschossId || (aktGeschoss() ? aktGeschoss().id : null);
+    const ort = gsId ? trFindeGeschoss(gsId) : null;
+    if (!ort) return null;
+    return MAPPE.wandName(ort.geschoss.kuerzel, MAPPE.naechsteWandNr(ort.mappe, ort.gebaeude.id));
+  }
+
   function impSchliesse(){
     impOffen = null;
     impOverlay.hidden = true;
@@ -1893,7 +2006,15 @@
     const parse = store.parseImport(text);                   // parst nur, speichert nichts
     impOffen = { parse, dateiname: quelle, geschossId: wpGeschossId };
     $('imp-datei').textContent = quelle;
-    $('imp-name').value = impNameVorschlag(parse, quelle);
+    // Wird die Wand in ein Geschoss eingetragen, bekommt sie die NAECHSTE Wandnummer des
+    // Gebaeudes — der Name ist dann `Wand_<Kuerzel>-<Nr>` und nicht frei waehlbar.
+    const ziel = impZielName(wpGeschossId);
+    $('imp-name').readOnly = !!ziel;
+    $('imp-name').value = ziel || impNameVorschlag(parse, quelle);
+    $('imp-name-hinweis').hidden = !ziel;
+    $('imp-name-hinweis').innerHTML = ziel
+      ? 'Der Name wird aus Geschosskürzel und der <b>nächsten Wandnummer</b> des Gebäudes gebildet '
+        + 'und ist nicht frei wählbar.' : '';
     $('imp-info').innerHTML = impZusammenfassung(parse.wandelement);
     impMsg.textContent = ''; impMsg.className = 'msg';
     impOverlay.hidden = false;
@@ -1953,7 +2074,8 @@
       impSchliesse();
       wpSchliesse();
       trRender();
-      trZeige(`„${name}“ wurde importiert.` + ort, true);
+      const endName = (store.holeElement(id) || {}).name || name;
+      trZeige(`„${endName}“ wurde importiert.` + ort, true);
     } catch (e) {
       impMsg.textContent = 'Import fehlgeschlagen: ' + fehlerText(e);
       impMsg.className = 'msg err';

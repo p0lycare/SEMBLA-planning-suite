@@ -125,11 +125,27 @@ store.setzeKopfdaten({ bauherr: "Landkreis", planverfasser: "Polycare",
  * Eine Wand ueber den ECHTEN Pfad bereitstellen: speichern, im aktiven Geschoss
  * eintragen ([L-4]), aktiv setzen ([L-10]). `setzeAktiv` benachrichtigt die Seite —
  * ein eigenes „fireStore" gibt es damit nicht mehr.
+ *
+ * Seit dem Entscheid 03.11.2026 heisst eine eingetragene Wand IMMER
+ * `Wand_<Kuerzel>-<Nr>` — das Eintragen zieht den erzeugten Namen in den Speicher
+ * (Eintrag UND `wandelement.name`). Damit die Byte-Vergleiche „Modul schreibt nichts"
+ * weiter streng gegen den ECHTEN Stand nach dem Eintragen laufen, wird das Testobjekt
+ * hier auf genau diesen Namen nachgezogen (Schluesselreihenfolge bleibt erhalten, weil
+ * `name` schon vorhanden ist). Davor wird geprueft, dass Speicher und Mappe denselben
+ * erzeugten Namen tragen und sonst nichts am Wandelement anders ist.
  * @param {object} we @param {object} [eingaben] optionaler Eingaben-Patch
  */
+const ERZEUGTER_NAME = /^Wand_[A-Z0-9]{1,2}-[1-9]\d*$/;
+let namenStimmig = true;
 function stelleAktiv(we, eingaben) {
   const id = store.speichere(we.name, we, undefined, eingaben);
   store.verorteWand(id, GESCHOSS, { name: we.name });
+  const gespeichert = store.holeElement(id);
+  const soll = store.wandVerortung(id).wand.name;
+  namenStimmig = namenStimmig && ERZEUGTER_NAME.test(soll) && gespeichert.name === soll
+    && gespeichert.wandelement.name === soll
+    && JSON.stringify({ ...we, name: soll }) === JSON.stringify(gespeichert.wandelement);
+  we.name = soll;
   store.setzeAktiv(id);
   return id;
 }
@@ -171,7 +187,7 @@ ok("[#72] kein einleitender intro-Absatz mehr auf der Seite",
 // Wandelement ueber JSON durch (wie im Browser), es ist also nie dasselbe Objekt.
 ok("aktives Wandelement geladen", JSON.stringify(Z.wall) === JSON.stringify(W));
 ok("Wandinfo nennt den Namen als Text (kein Markup)",
-  /IW-01/.test($("wandinfo").textContent) && $("wandinfo").innerHTML === ""
+  W.name === "Wand_G1-1" && $("wandinfo").kinder[0]?.textContent === W.name && $("wandinfo").innerHTML === ""
   && $("wandinfo").kinder.length === 1 && $("wandinfo").kinder[0].tagName === "b");
 ok("Blatt-CSS aus dem gemeinsamen Baustein eingehaengt", $("zcss").textContent === ZEICHNUNG_CSS);
 ok("Uebersicht: Masse", $("ovDim").textContent === "3,000 × 2,60 m");
@@ -336,7 +352,8 @@ ok("der Altbestand eingaben.projekt bleibt leer ([L-11])",
 // --- 5) Elementwechsel von aussen (Kopfleiste/Startseite) ----------------
 const idW2 = stelleAktiv(W2, { zeichnung: { format: "a4" } });
 ok("externer Wechsel laedt das neue Wandelement",
-  JSON.stringify(Z.wall) === JSON.stringify(W2) && /IW-02/.test($("wandinfo").textContent));
+  JSON.stringify(Z.wall) === JSON.stringify(W2) && W2.name !== W.name
+  && $("wandinfo").kinder[0]?.textContent === W2.name);
 ok("Optionen des neuen Elements uebernommen", Z.opt.format === "a4" && $("fmt").value === "a4");
 ok("Vorschau zeigt das neue Element", $("blattwrap").innerHTML === blattHtml(W2, eingIst(), Z.opt).html);
 
@@ -344,9 +361,17 @@ ok("Vorschau zeigt das neue Element", $("blattwrap").innerHTML === blattHtml(W2,
 // Der Name kommt vom Nutzer (Modul 0) und reist im Projekt-JSON mit, ist also nicht
 // vertrauenswuerdig. Weder die Wandinfo im Modul noch das Blatt/der Export duerfen ihn
 // als HTML interpretieren.
+// Seit dem Entscheid 03.11.2026 behaelt nur eine NICHT eingetragene Wand ihren freien
+// Namen (eine eingetragene heisst `Wand_<Kuerzel>-<Nr>`). Die Escaping-Pruefung laeuft
+// deshalb mit einer solchen Wand — sie ist jederzeit aktivierbar ([L-10]) und traegt den
+// boesen Namen unveraendert bis ins Blatt.
 const BOESE = '<img src=x onerror="alert(1)"><script>alert(2)</' + 'script>';
 const WX = buildWall(BOESE, 3000, 2600, []);
-stelleAktiv(WX, { zeichnung: { format: "a3" } });
+const idWX = store.speichere(WX.name, WX, undefined, { zeichnung: { format: "a3" } });  // NICHT eingetragen
+store.setzeAktiv(idWX);
+ok("boeser Name: die Wand ist nicht eingetragen und behaelt ihren freien Namen",
+  store.wandVerortung(idWX) == null && store.holeElement(idWX).name === BOESE
+  && Z.wall && Z.wall.name === BOESE);
 const info = $("wandinfo");
 ok("boeser Name landet als Textknoten, nicht als Markup",
   info.kinder.length === 1 && info.kinder[0].tagName === "b"
@@ -718,7 +743,11 @@ store.setzeAktiv(idW);
     Z.opt.format === "a4" && Z.opt.wasserzeichen === true);
 
   // Dieselbe Wand, neu gerechnet: nur die Hoehe ist anders (2600 -> 3400 mm = 17 Steinreihen).
-  const W109neu = buildWall("IW-109", 3000, 3400, []);
+  // Modul 1 baut sie unter dem Namen, den die Wand traegt — seit dem Eintragen der
+  // erzeugte `Wand_<Kuerzel>-<Nr>` (Entscheid 03.11.2026).
+  ok("[#109] Voraussetzung: die eingetragene Wand traegt den erzeugten Namen",
+    ERZEUGTER_NAME.test(W109.name) && store.holeElement(id109).name === W109.name);
+  const W109neu = buildWall(W109.name, 3000, 3400, []);
   ok("[#109] Voraussetzung: die neue Fassung unterscheidet sich wirklich",
     W109neu.height_mm === 3400 && W109neu.lagen !== W109.lagen);
   const kopfVor = JSON.stringify(kopfIst()), eingVor = JSON.stringify(eingStand(id109));
@@ -741,7 +770,7 @@ store.setzeAktiv(idW);
   ok("[#109] die gesetzten Darstellungsoptionen stehen unveraendert (kein Rueckfall auf Standard)",
     JSON.stringify(Z.opt) === optVor && $("fmt").value === "a4" && $("wm").checked === true
     && JSON.stringify(Z.opt) !== JSON.stringify(standardOptionen()));
-  ok("[#109] der Wandname wird frisch gelesen", /IW-109/.test($("wandinfo").textContent));
+  ok("[#109] der Wandname wird frisch gelesen", $("wandinfo").kinder[0]?.textContent === W109.name);
   ok("[#109] der Neuaufbau schreibt nichts zurueck",
     JSON.stringify(store.holeElement(id109).wandelement) === JSON.stringify(W109neu)
     && JSON.stringify(eingStand(id109)) === eingVor
@@ -752,7 +781,7 @@ store.setzeAktiv(idW);
   const id2 = stelleAktiv(W2, { zeichnung: { format: "a3" } });
   ok("[#109] ein Kennungswechsel laedt weiterhin das andere Wandelement samt Namen",
     store.aktivId() === id2 && JSON.stringify(Z.wall) === JSON.stringify(W2)
-    && /IW-02/.test($("wandinfo").textContent)
+    && $("wandinfo").kinder[0]?.textContent === W2.name && W2.name !== W109.name
     && $("blattwrap").innerHTML === blattHtml(W2, eingIst(), Z.opt).html);
   ok("[#109] und uebernimmt die Optionen des neuen Elements", Z.opt.format === "a3");
 
@@ -762,7 +791,7 @@ store.setzeAktiv(idW);
     Z.wall === null && $("blattwrap").innerHTML === "" && $("ovDim").textContent === "—"
     && /Kein aktives Wandelement/.test($("wandinfo").textContent));
   ok("[#109] Modul 7 faellt nicht auf den zuletzt geladenen Wandstand zurueck",
-    !/IW-02|IW-109/.test($("blattwrap").innerHTML));
+    !$("blattwrap").innerHTML.includes(W2.name) && !$("blattwrap").innerHTML.includes(W109.name));
   ok("[#109] der Behandler hat keinen eigenen Rueckfall auf den alten Wandstand",
     !/aktivesWandelement\(\)\s*\|\|\s*WALL/.test(html));
 
@@ -860,7 +889,15 @@ store.setzeAktiv(idW);
 
   // Akzeptanz 3 / M4: dieselbe Wand OHNE die drei Felder — das Blatt faellt zeichenweise auf
   // das Symbolmass zurueck, und ausser den drei Bauteilen ist alles bytegleich.
-  const idO = stelleAktiv(WZO, opt);
+  // „Dieselbe Wand" heisst seit dem Entscheid 03.11.2026 auch: dieselbe Kennung — jede
+  // eingetragene Wand traegt ihren eigenen erzeugten Namen `Wand_<Kuerzel>-<Nr>`, der im
+  // Schriftfeld steht. Die Fassung ohne Felder wird deshalb unter DERSELBEN Kennung
+  // gespeichert (die Seite folgt dem Abonnement); der Name bleibt dabei der erzeugte.
+  store.speichere(WZO.name, WZO, idM, opt);
+  const idO = idM;
+  ok("[#97] Voraussetzung: die Fassung ohne Felder steht unter demselben erzeugten Namen",
+    ERZEUGTER_NAME.test(WZM.name) && store.holeElement(idO).wandelement.name === WZM.name
+    && Z.wall.name === WZM.name && Z.wall.prestress.zp_mutter_h_mm === undefined);
   const blattOhne = $("blattwrap").innerHTML;
   ok("[#97] ohne die Felder bleibt das Blatt beim festen Symbolmass",
     (() => { const m = zspMut(blattOhne);
@@ -932,7 +969,13 @@ store.setzeAktiv(idW);
       const p = a.match(/points="([^"]+)"/)[1].split(" ").map(q => q.split(",").map(Number));
       return Math.abs((p[2][0] - p[1][0]) / scM1 - 30) < 1e-9
         && Math.abs(balken(blattMit)[0] * mst - 30) < 1e-2; })());
-  const idO = stelleAktiv(WEO, opt);
+  // Dieselbe Wand ohne das Feld — unter DERSELBEN Kennung, damit der erzeugte Wandname
+  // im Schriftfeld gleich bleibt (Entscheid 03.11.2026, s. o. bei #97).
+  store.speichere(WEO.name, WEO, idM, opt);
+  const idO = idM;
+  ok("Einlegeblech: Voraussetzung — die Fassung ohne Feld steht unter demselben erzeugten Namen",
+    ERZEUGTER_NAME.test(WEM.name) && store.holeElement(idO).wandelement.name === WEM.name
+    && Z.wall.name === WEM.name && Z.wall.prestress.einlegeblech_b_mm === undefined);
   const blattOhne = $("blattwrap").innerHTML;
   ok("Einlegeblech: ohne Katalogmass bleibt der Balken beim Symbolmass `SPANN_MM.blech_b`",
     balken(blattOhne).length === balken(blattMit).length
@@ -1150,7 +1193,7 @@ ok("Modul verweist fuer Dateien auf den zentralen Export", /zentralen Export/.te
     /import \* as AX from '\.\/shared\/sembla-ax\.js'/.test(html) && /AX=S\.AX;/.test(html)
     && !/function (benennung|modalDialog|tooltips|ungueltig)\(/.test(html));
   ok("[#145] (must-not) die Zugaenglichkeit hat kein gespeichertes Feld angelegt",
-    store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
+    store.SCHEMA_VERSION === 7 && store.PROJEKT_VERSION === 2
     && !/aria|ax-b-|ax-tip/i.test(localStorage.getItem("sembla:elemente") || "")
     && !/aria|ax-b-|ax-tip/i.test(localStorage.getItem("sembla:projekte") || ""));
 
@@ -1189,6 +1232,11 @@ ok("Modul verweist fuer Dateien auf den zentralen Export", /zentralen Export/.te
   Z.applyWand(buildWall("IW-Z9-0", 3000, 3000, []));
   ok("[Z-9] Modul 7: ohne Spannstueck keine Aussage zur festen Folge", $("ovStangen").textContent === "–");
 }
+
+// Entscheid 03.11.2026: jede ueber den echten Pfad eingetragene Testwand traegt im Speicher
+// (Eintrag UND Wandelement) genau den erzeugten Namen der Mappe — und sonst unveraendert
+// das gerechnete Wandelement (Grundlage der Byte-Vergleiche oben).
+ok("Wandnamen: eingetragene Testwaende heissen Wand_<Kuerzel>-<Nr>, sonst bytegleich", namenStimmig);
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

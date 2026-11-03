@@ -77,7 +77,7 @@ import { SEITEN } from "./sembla-constraints.js";
 import {
   BLATT as BLATT_LP, blattInnen as blattInnenLp, BRANDKLASSE as BRAND_LP,
   FARBE as FARBE_LP, kopfFelder, lageplanDaten, lageplanSvg, lageplanTitel,
-  MASSSTAEBE as MASSSTAEBE_LP, normOptionen as normOptionenLp,
+  MASSSTAEBE as MASSSTAEBE_LP, normOptionen as normOptionenLp, NUMMERNBLASE_TEXT,
   VERZAHNUNG as VERZAHNUNG_LP,
 } from "./sembla-lageplan.js";
 import { bodenblechStoesse, bodenblechTeile, STUECK_LABEL,
@@ -128,8 +128,7 @@ const KASTEN_PAD_X = _mmPx(9), KASTEN_PAD_Y = _mmPx(7), KASTEN_LUECKE = _mmPx(8)
 const FS_CAP = _mmPx(12);        // .zcap/.lpcap
 const FS_H4 = _mmPx(10);         // .zbox h4/.lpbox h4
 const FS_TAB = _mmPx(11);        // table.ztab
-const FS_TAB_LP = _mmPx(10.5);   // table.lptab
-const FS_KOPFZEILE = _mmPx(9);   // table.lptab th
+const FS_TAB_LP = _mmPx(10.5);   // Listenzeilen der Seitenspalte (Verzahnungen)
 const FS_IDS = _mmPx(9);         // .zbox.zids table.ztab
 const FS_KLEIN = _mmPx(10);      // .zlegende/.lplegende/.zmangel/.lpbg-info
 const FS_FUSS = _mmPx(9.5);      // .zfuss
@@ -634,7 +633,7 @@ export function legendeLageplan() {
         + `${BRAND_LP.F30.merkmal} (Planungskennzeichnung, kein Nachweis)` },
     { form: "bar", marke_farbe: FARBE_LP.mass, text: "treibende Bemaßung ([K-3])" },
     { form: "kuerzel", kuerzel: "1", marke_farbe: TINTE,
-      text: "Nummernblase der Wand — Name s. „Wände im Geschoss\"" },
+      text: NUMMERNBLASE_TEXT },
     { form: "plate", marke_farbe: FARBE_LP.fehler, text: "Widerspruch / Kollision ([K-6]/[K-13])" },
   ];
 }
@@ -700,8 +699,9 @@ export function legendeWand(w, opts = {}) {
  * Das LAGEPLANblatt als reine, selbstgenuegsame SVG-Zeichenkette ([N-1] … [N-9]).
  *
  * Gerechnet wird nichts: `lageplanSvg()` liefert Zeichnung und Masstab,
- * `kopfFelder()` das Schriftfeld ([N-6]/[L-11]), `daten.waende` die Wandtabelle und
- * `daten.hintergrund`/`daten.verzahnungen` die beiden bedingten Kaesten. Der
+ * `kopfFelder()` das Schriftfeld ([N-6]/[L-11]) und `daten.hintergrund`/
+ * `daten.verzahnungen` die beiden bedingten Kaesten (die Wandtabelle ist seit dem
+ * Entscheid vom 03.11.2026 entfallen). Der
  * Planhintergrund steckt als Data-URL in `inner` und reist unveraendert mit ([N-9]).
  * @returns {{inhalt:string, titel:string, format:string, masstab:number, blatt_mm:{w:number,h:number}}}
  */
@@ -740,23 +740,8 @@ export function lageplanBlattInhalt(daten, opts) {
         + `nicht maßstabsgetreu. Größeres Blattformat wählen ([N-8]).`);
   }
 
-  // Wandtabelle: Nummer (= Nummernblase im Plan), Wandname, Hoehe — und sonst nichts (#89).
-  const tabelle = [{ art: "spalten", fs: FS_KOPFZEILE, linie: TRENN, zellen: [
-    { text: "Nr.", anteil: 0.11, anker: "end", farbe: GRAU, fett: true },
-    { text: "Wand", anteil: 0.59, farbe: GRAU, fett: true },
-    { text: "Höhe", anteil: 0.3, anker: "end", farbe: GRAU, fett: true },
-  ] }];
-  if (daten.waende.length) {
-    for (const w of daten.waende) {
-      tabelle.push({ art: "spalten", fs: FS_TAB_LP, linie: LINIE, zellen: [
-        { text: String(w.nr), anteil: 0.11, anker: "end", fett: true },
-        { text: w.name, anteil: 0.59 },
-        { text: w.hoehe_mm == null ? "–" : _fmt(w.hoehe_mm) + " mm", anteil: 0.3, anker: "end" },
-      ] });
-    }
-  } else {
-    tabelle.push({ art: "text", fs: FS_TAB_LP, text: "keine Wand eingetragen" });
-  }
+  // Die fruehere Wandtabelle „Wände im Geschoss" (Nr. | Wand | Höhe) ist mit dem Entscheid
+  // vom 03.11.2026 ersatzlos entfallen — die Blase traegt die feste Wandnummer.
 
   // Planhintergrund (#80/[N-9]) und Verzahnungen (#83) nur, wenn es sie gibt — sonst
   // waere es ein Kasten ueber eine Sache, die es nicht gibt.
@@ -781,7 +766,6 @@ export function lageplanBlattInhalt(daten, opts) {
       { x: z.rand.links ? -z.rand.links : 0, y: z.rand.oben ? -z.rand.oben : 0,
         w: z.voll_breite_mm, h: z.voll_hoehe_mm })
     + _seitenspalte(f.spalte, [
-      { titel: "Wände im Geschoss", zeilen: tabelle },
       { titel: "Darstellung", zeilen: [
         { art: "punkte", fs: FS_KLEIN, eintraege: legendeLageplan() }] },
       hgZeile ? { titel: "Planhintergrund", zeilen: [hgZeile] } : null,
@@ -990,7 +974,7 @@ export function blaetterFuerGeschoss(p) {
   // vor „Wand 2"), und kein Bedienelement: das ist der Entscheid zu #107 und keine
   // Voreinstellung. Gearbeitet wird auf einer FLACHEN KOPIE — `gs.waende` bleibt
   // unberuehrt, und `lageplanDaten()` (oben) hat die unsortierte Mappe bekommen, damit
-  // Nummernblasen und Wandtabelle des Lageplans wertgleich bleiben (Modul 9 unberuehrt).
+  // die Nummernblasen des Lageplans wertgleich bleiben (Modul 9 unberuehrt).
   // Bei Namensgleichheit sticht der urspruengliche Mappenindex: die Stabilitaet ist
   // damit nachweisbar und haengt nicht an der Sortiergarantie der Laufzeit.
   const wandFolge = gs.waende
