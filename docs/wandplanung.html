@@ -2060,13 +2060,22 @@ function pxToK(e){ if(!LASTDRAW) return 0; const {N}=LASTDRAW;
  * Vorhandene Achse innerhalb der Fangweite (Wandmillimeter) — sonst null. Entschieden wird
  * ausdruecklich ueber den ABSTAND zur naechsten vorhandenen Achse, nicht ueber die Zellnummer.
  */
-function achseImFang(e){ ensureManual();
+function achseImFang(e){
   const xmm=pxToXmm(e); let best=null, bd=Infinity;
-  for(const k of manualCols){ const d=Math.abs(xmm-(62.5+GRID*k)); if(d<bd){ bd=d; best=k; } }
+  for(const k of wirksameCols()){ const d=Math.abs(xmm-(62.5+GRID*k)); if(d<bd){ bd=d; best=k; } }
   return (best!=null && bd<=fangKMm()+1e-9) ? best : null; }
-function ensureManual(){ if(!manualCols) manualCols = RESULT ? RESULT.wandelement.tension_columns.map(c=>c.k) : []; }
-function addAxisAt(k){ ensureManual(); if(!manualCols.includes(k)){ manualCols.push(k); manualCols.sort((a,b)=>a-b); } }
-function delAxis(k){ ensureManual(); const i=manualCols.indexOf(k); if(i>=0) manualCols.splice(i,1); if(selAxis===k) selAxis=null; }
+// [V-9] Manuell wird eine Wand erst durch eine ECHTE Änderung (Felix Bauroth, 29.10.2026, Miro R01
+// SA 4): Ein-/Ausschalten, Auswählen und die Trefferprüfung lesen nur die WIRKSAME Liste und
+// schreiben nichts; erst Setzen, Löschen oder Ziehen auf eine andere Lage übernimmt den Auto-Stand
+// über ensureManual() als Override. Dasselbe Muster gilt für alle vier Editiermodi.
+// Eine leere Achsliste ist — wie in vorgaben() — kein Override: dann gilt wieder der Auto-Stand.
+function wirksameCols(){ return (manualCols && manualCols.length) ? manualCols : (RESULT ? RESULT.wandelement.tension_columns.map(c=>c.k) : []); }
+function ensureManual(){ if(!manualCols || !manualCols.length) manualCols = wirksameCols().slice(); }
+function addAxisAt(k){ if(wirksameCols().includes(k)) return; ensureManual(); manualCols.push(k); manualCols.sort((a,b)=>a-b); }
+function delAxis(k){ if(selAxis===k) selAxis=null; if(!wirksameCols().includes(k)) return; ensureManual(); manualCols.splice(manualCols.indexOf(k),1); }
+/** Gewählte Achse auf Lage k ziehen — nur wenn k wirklich eine andere, freie Lage ist. */
+function zieheAchse(k){ const cur=wirksameCols(); if(k===selAxis || cur.includes(k) || !cur.includes(selAxis)) return false;
+  ensureManual(); manualCols[manualCols.indexOf(selAxis)]=k; manualCols.sort((a,b)=>a-b); selAxis=k; return true; }
 // [V-9] Sichtbarer Hinweis „Spannachsen manuell gesetzt" (Felix Bauroth, 29.10.2026). Gelesen wird
 // allein `prestress.columns_grid` des GERECHNETEN Wandelements — dasselbe Feld, das gespeichert
 // wird und die Auto-Verteilung sperrt; der Editorzustand `manualCols` ist nicht die Quelle.
@@ -2087,7 +2096,7 @@ function renderAchsHinweis(w){
     +(ug ? ' ⚠ '+ug+' Stein(e) ohne Spannachse [V-2], siehe Warnung.' : '');
 }
 function setManualCols(arr){ manualCols=(arr&&arr.length)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAxis=null; run(); }
-function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; dcEdit=false; asEdit=false; syncZpTool(); syncAgTool(); syncDcTool(); syncAsTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManual(); }
+function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; dcEdit=false; asEdit=false; syncZpTool(); syncAgTool(); syncDcTool(); syncAsTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); }
   $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; axGedrueckt('axisTool',axisEdit); if(RESULT) draw(RESULT.wandelement); }
 
 // ---- Zwischenspannpunkte ([A-14]…[A-17], #93) ----------------------------------------------
@@ -2105,22 +2114,26 @@ function pxToZmm(e){ const {pad,sc,hPx}=LASTDRAW; const {sy}=bildPunkt(e);
 function zInnen(z){ const H=RESULT?RESULT.wandelement.height_mm:COURSE;
   return Math.max(COURSE, Math.min(H-COURSE, z)); }
 /** Vorhandene Punkthoehe innerhalb der Fangweite (Wandmillimeter) — sonst null. */
-function zpImFang(e){ ensureManualZp();
+function zpImFang(e){
   const z=pxToZmm(e); let best=null, bd=Infinity;
-  for(const zz of manualZp){ const d=Math.abs(z-zz); if(d<bd){ bd=d; best=zz; } }
+  for(const zz of wirksameZp()){ const d=Math.abs(z-zz); if(d<bd){ bd=d; best=zz; } }
   return (best!=null && bd<=fangZMm()+1e-9) ? best : null; }
-/** Aus dem Auto-Stand einen bearbeitbaren Override machen (die wirksamen Höhen, nichts Neues). */
-function ensureManualZp(){ if(!manualZp) manualZp = RESULT
+/** Wirksame Höhen: der Override, sonst der Auto-Stand — nur gelesen, nichts übernommen. */
+function wirksameZp(){ return manualZp || (RESULT
   ? [...new Set(wirksameZwischenpunkte(RESULT.wandelement).map(zp=>zp.z_mm))].sort((a,b)=>a-b)
-  : []; }
-function addZpAt(z){ ensureManualZp(); if(!manualZp.includes(z)){ manualZp.push(z); manualZp.sort((a,b)=>a-b); } }
-function delZp(z){ ensureManualZp(); const i=manualZp.indexOf(z); if(i>=0) manualZp.splice(i,1); if(selZp===z) selZp=null; }
+  : []); }
+/** Aus dem Auto-Stand einen bearbeitbaren Override machen — erst bei einer echten Änderung. */
+function ensureManualZp(){ if(!manualZp) manualZp = wirksameZp().slice(); }
+function addZpAt(z){ if(wirksameZp().includes(z)) return; ensureManualZp(); manualZp.push(z); manualZp.sort((a,b)=>a-b); }
+function delZp(z){ if(selZp===z) selZp=null; if(!wirksameZp().includes(z)) return; ensureManualZp(); manualZp.splice(manualZp.indexOf(z),1); }
+function zieheZp(z){ const cur=wirksameZp(); if(z===selZp || cur.includes(z) || !cur.includes(selZp)) return false;
+  ensureManualZp(); manualZp[manualZp.indexOf(selZp)]=z; manualZp.sort((a,b)=>a-b); selZp=z; return true; }
 function setManualZp(arr){ manualZp=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selZp=null; run(); }
 function syncZpTool(){ $('zpTool').style.background=zpEdit?'#1f6feb':''; $('zpTool').style.color=zpEdit?'#fff':''; axGedrueckt('zpTool',zpEdit); }
 function setZpEdit(v){ zpEdit=!!v; if(zpEdit){ editMode=false; axisEdit=false; agEdit=false; dcEdit=false; asEdit=false;
     $('axisTool').style.background=''; $('axisTool').style.color=''; axGedrueckt('axisTool',false);
     syncAgTool(); syncDcTool(); syncAsTool();
-    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManualZp(); }
+    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); }
   syncZpTool(); if(RESULT) draw(RESULT.wandelement); renderZpHinweis(); }
 /** Zustand benennen: abgeleitet oder ausdrücklich gewählt — nie beides behaupten. */
 function renderZpHinweis(){
@@ -2147,22 +2160,26 @@ function fangAgMm(){ return GRID/2; }     // 62,5 mm
 function pxToXag(e){ if(!LASTDRAW) return 0;
   return Math.max(0, Math.min(LASTDRAW.L, Math.round(pxToXmm(e)))); }
 /** Vorhandene Punktlage innerhalb der Fangweite (Wandmillimeter) — sonst null. */
-function agImFang(e){ ensureManualAg();
+function agImFang(e){
   const x=pxToXmm(e); let best=null, bd=Infinity;
-  for(const xx of manualAg){ const d=Math.abs(x-xx); if(d<bd){ bd=d; best=xx; } }
+  for(const xx of wirksameAg()){ const d=Math.abs(x-xx); if(d<bd){ bd=d; best=xx; } }
   return (best!=null && bd<=fangAgMm()+1e-9) ? best : null; }
-/** Aus dem Auto-Stand einen bearbeitbaren Override machen (die gerechneten Lagen, nichts Neues). */
-function ensureManualAg(){ if(!manualAg) manualAg = RESULT
+/** Wirksame Lagen: der Override, sonst die gerechneten — nur gelesen, nichts übernommen. */
+function wirksameAg(){ return manualAg || (RESULT
   ? [...new Set((RESULT.wandelement.ausgleichspunkte||[]).map(p=>p.x_mm))].sort((a,b)=>a-b)
-  : []; }
-function addAgAt(x){ ensureManualAg(); if(!manualAg.includes(x)){ manualAg.push(x); manualAg.sort((a,b)=>a-b); } }
-function delAg(x){ ensureManualAg(); const i=manualAg.indexOf(x); if(i>=0) manualAg.splice(i,1); if(selAg===x) selAg=null; }
+  : []); }
+/** Aus dem Auto-Stand einen bearbeitbaren Override machen — erst bei einer echten Änderung. */
+function ensureManualAg(){ if(!manualAg) manualAg = wirksameAg().slice(); }
+function addAgAt(x){ if(wirksameAg().includes(x)) return; ensureManualAg(); manualAg.push(x); manualAg.sort((a,b)=>a-b); }
+function delAg(x){ if(selAg===x) selAg=null; if(!wirksameAg().includes(x)) return; ensureManualAg(); manualAg.splice(manualAg.indexOf(x),1); }
+function zieheAg(x){ const cur=wirksameAg(); if(x===selAg || cur.includes(x) || !cur.includes(selAg)) return false;
+  ensureManualAg(); manualAg[manualAg.indexOf(selAg)]=x; manualAg.sort((a,b)=>a-b); selAg=x; return true; }
 function setManualAg(arr){ manualAg=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAg=null; run(); }
 function syncAgTool(){ $('agTool').style.background=agEdit?'#1f6feb':''; $('agTool').style.color=agEdit?'#fff':''; axGedrueckt('agTool',agEdit); }
 function setAgEdit(v){ agEdit=!!v; if(agEdit){ editMode=false; axisEdit=false; zpEdit=false; dcEdit=false; asEdit=false;
     $('axisTool').style.background=''; $('axisTool').style.color=''; axGedrueckt('axisTool',false);
     syncZpTool(); syncDcTool(); syncAsTool();
-    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManualAg(); }
+    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); }
   syncAgTool(); if(RESULT) draw(RESULT.wandelement); renderAgHinweis(); }
 /** Zustand benennen: verteilt oder ausdrücklich gewählt — nie beides behaupten. */
 function renderAgHinweis(){
@@ -2194,22 +2211,26 @@ function dcAchseAmZeiger(e){ if(!RESULT) return null;
     if(d<bd){ bd=d; best=col.k; } }
   return best; }
 /** Vorhandener Anschlusspunkt innerhalb der Fangweite (Wandmillimeter) — sonst null. */
-function dcImFang(e){ ensureManualDc(); if(!RESULT) return null;
+function dcImFang(e){ if(!RESULT) return null;
   const xmm=pxToXmm(e); let best=null, bd=Infinity;
-  for(const k of manualDc){ const d=Math.abs(xmm-(62.5+GRID*k)); if(d<bd){ bd=d; best=k; } }
+  for(const k of wirksameDc()){ const d=Math.abs(xmm-(62.5+GRID*k)); if(d<bd){ bd=d; best=k; } }
   return (best!=null && bd<=fangKMm()+1e-9) ? best : null; }
-/** Aus dem Auto-Stand einen bearbeitbaren Override machen (die gerechneten Achsen, nichts Neues). */
-function ensureManualDc(){ if(!manualDc) manualDc = RESULT
+/** Wirksame Achsen: der Override, sonst die gerechneten — nur gelesen, nichts übernommen. */
+function wirksameDc(){ return manualDc || (RESULT
   ? [...new Set((RESULT.wandelement.deckenanschlusspunkte||[]).map(p=>p.k))].sort((a,b)=>a-b)
-  : []; }
-function addDcAt(k){ ensureManualDc(); if(k!=null && !manualDc.includes(k)){ manualDc.push(k); manualDc.sort((a,b)=>a-b); } }
-function delDc(k){ ensureManualDc(); const i=manualDc.indexOf(k); if(i>=0) manualDc.splice(i,1); if(selDc===k) selDc=null; }
+  : []); }
+/** Aus dem Auto-Stand einen bearbeitbaren Override machen — erst bei einer echten Änderung. */
+function ensureManualDc(){ if(!manualDc) manualDc = wirksameDc().slice(); }
+function addDcAt(k){ if(k==null || wirksameDc().includes(k)) return; ensureManualDc(); manualDc.push(k); manualDc.sort((a,b)=>a-b); }
+function delDc(k){ if(selDc===k) selDc=null; if(!wirksameDc().includes(k)) return; ensureManualDc(); manualDc.splice(manualDc.indexOf(k),1); }
+function zieheDc(k){ const cur=wirksameDc(); if(k==null || k===selDc || cur.includes(k) || !cur.includes(selDc)) return false;
+  ensureManualDc(); manualDc[manualDc.indexOf(selDc)]=k; manualDc.sort((a,b)=>a-b); selDc=k; return true; }
 function setManualDc(arr){ manualDc=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selDc=null; run(); }
 function syncDcTool(){ $('dcTool').style.background=dcEdit?'#1f6feb':''; $('dcTool').style.color=dcEdit?'#fff':''; axGedrueckt('dcTool',dcEdit); }
 function setDcEdit(v){ dcEdit=!!v; if(dcEdit){ editMode=false; axisEdit=false; zpEdit=false; agEdit=false; asEdit=false;
     $('axisTool').style.background=''; $('axisTool').style.color=''; axGedrueckt('axisTool',false);
     syncZpTool(); syncAgTool(); syncAsTool();
-    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManualDc(); }
+    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); }
   syncDcTool(); if(RESULT) draw(RESULT.wandelement); renderDcHinweis(); }
 /** Zustand benennen: verteilt oder ausdrücklich gewählt — nie beides behaupten. */
 function renderDcHinweis(){
@@ -2468,12 +2489,12 @@ function bindEvents(){
   $('axisAuto').addEventListener('click',()=>{ manualCols=null; selAxis=null; run(); });
   // Innerhalb der Fangweite (fangKMm(), Wandmillimeter) wird die VORHANDENE Achse angefasst;
   // erst ausserhalb entsteht eine neue — sonst verdoppelt jeder Griff die Achse (#106).
-  $('plan').addEventListener('pointerdown',e=>{ if(!axisEdit) return; ensureManual();
+  $('plan').addEventListener('pointerdown',e=>{ if(!axisEdit) return;
     const treffer=achseImFang(e);
     if(treffer!=null){ selAxis=treffer; axisDragging=true; }
     else { const k=pxToK(e); addAxisAt(k); selAxis=k; run(); } if(RESULT) draw(RESULT.wandelement); });
   $('plan').addEventListener('pointermove',e=>{ if(!axisEdit||!axisDragging||selAxis==null) return; const k=pxToK(e);
-    if(k!==selAxis && !manualCols.includes(k)){ const i=manualCols.indexOf(selAxis); if(i>=0){ manualCols[i]=k; manualCols.sort((a,b)=>a-b); selAxis=k; run(); } } });
+    if(zieheAchse(k)) run(); });
   window.addEventListener('pointerup',()=>{ axisDragging=false; });
   $('plan').addEventListener('dblclick',e=>{ if(!axisEdit) return; const treffer=achseImFang(e); if(treffer!=null){ delAxis(treffer); run(); } });
   // Zwischenspannpunkte: setzen/auswählen (pointerdown), ziehen (pointermove), löschen (dblclick)
@@ -2481,12 +2502,12 @@ function bindEvents(){
   $('zpDel').addEventListener('click',()=>{ if(selZp!=null){ delZp(selZp); run(); } });
   $('zpAuto').addEventListener('click',()=>{ manualZp=null; selZp=null; run(); });
   // Gleiche Entscheidung wie bei den Spannachsen, nur in der Lagenachse (fangZMm()).
-  $('plan').addEventListener('pointerdown',e=>{ if(!zpEdit) return; ensureManualZp();
+  $('plan').addEventListener('pointerdown',e=>{ if(!zpEdit) return;
     const treffer=zpImFang(e);
     if(treffer!=null){ selZp=treffer; zpDragging=true; }
     else { const z=pxToZ(e); addZpAt(z); selZp=z; run(); } if(RESULT) draw(RESULT.wandelement); });
   $('plan').addEventListener('pointermove',e=>{ if(!zpEdit||!zpDragging||selZp==null) return; const z=pxToZ(e);
-    if(z!==selZp && !manualZp.includes(z)){ const i=manualZp.indexOf(selZp); if(i>=0){ manualZp[i]=z; manualZp.sort((a,b)=>a-b); selZp=z; run(); } } });
+    if(zieheZp(z)) run(); });
   window.addEventListener('pointerup',()=>{ zpDragging=false; });
   $('plan').addEventListener('dblclick',e=>{ if(!zpEdit) return; const treffer=zpImFang(e); if(treffer!=null){ delZp(treffer); run(); } });
   // Ausgleichspunkte: setzen/auswählen (pointerdown), ziehen (pointermove), löschen (dblclick)
@@ -2494,12 +2515,12 @@ function bindEvents(){
   $('agDel').addEventListener('click',()=>{ if(selAg!=null){ delAg(selAg); run(); } });
   $('agAuto').addEventListener('click',()=>{ manualAg=null; selAg=null; run(); });
   // Gleiche Entscheidung wie bei den Spannachsen, nur längs der Wand (fangAgMm()).
-  $('plan').addEventListener('pointerdown',e=>{ if(!agEdit) return; ensureManualAg();
+  $('plan').addEventListener('pointerdown',e=>{ if(!agEdit) return;
     const treffer=agImFang(e);
     if(treffer!=null){ selAg=treffer; agDragging=true; }
     else { const x=pxToXag(e); addAgAt(x); selAg=x; run(); } if(RESULT) draw(RESULT.wandelement); });
   $('plan').addEventListener('pointermove',e=>{ if(!agEdit||!agDragging||selAg==null) return; const x=pxToXag(e);
-    if(x!==selAg && !manualAg.includes(x)){ const i=manualAg.indexOf(selAg); if(i>=0){ manualAg[i]=x; manualAg.sort((a,b)=>a-b); selAg=x; run(); } } });
+    if(zieheAg(x)) run(); });
   window.addEventListener('pointerup',()=>{ agDragging=false; });
   $('plan').addEventListener('dblclick',e=>{ if(!agEdit) return; const treffer=agImFang(e); if(treffer!=null){ delAg(treffer); run(); } });
   // Deckenanschluss: setzen/auswählen (pointerdown), ziehen (pointermove), löschen (dblclick).
@@ -2508,12 +2529,12 @@ function bindEvents(){
   $('dcTool').addEventListener('click',()=>setDcEdit(!dcEdit));
   $('dcDel').addEventListener('click',()=>{ if(selDc!=null){ delDc(selDc); run(); } });
   $('dcAuto').addEventListener('click',()=>{ manualDc=null; selDc=null; run(); });
-  $('plan').addEventListener('pointerdown',e=>{ if(!dcEdit) return; ensureManualDc();
+  $('plan').addEventListener('pointerdown',e=>{ if(!dcEdit) return;
     const treffer=dcImFang(e);
     if(treffer!=null){ selDc=treffer; dcDragging=true; }
     else { const k=dcAchseAmZeiger(e); if(k!=null){ addDcAt(k); selDc=k; run(); } } if(RESULT) draw(RESULT.wandelement); });
   $('plan').addEventListener('pointermove',e=>{ if(!dcEdit||!dcDragging||selDc==null) return; const k=dcAchseAmZeiger(e);
-    if(k!=null && k!==selDc && !manualDc.includes(k)){ const i=manualDc.indexOf(selDc); if(i>=0){ manualDc[i]=k; manualDc.sort((a,b)=>a-b); selDc=k; run(); } } });
+    if(zieheDc(k)) run(); });
   window.addEventListener('pointerup',()=>{ dcDragging=false; });
   $('plan').addEventListener('dblclick',e=>{ if(!dcEdit) return; const treffer=dcImFang(e); if(treffer!=null){ delDc(treffer); run(); } });
   // Bodenblech-Aussparungen: EIN Klick auf ein Rasterfeld wählt an bzw. ab ([A-28], #138).
@@ -2542,6 +2563,9 @@ function bindEvents(){
 
 window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, setEdit:(v)=>{editMode=v;},
   setAxisEdit, setManualCols, addAxisAt, delAxis, get manualCols(){return manualCols;}, get axisEdit(){return axisEdit;},
+  // Die WIRKSAMEN Listen (Override, sonst Auto) — nur gelesen, wie die Trefferprüfung sie sieht.
+  get wirksameCols(){return wirksameCols().slice();}, get wirksameZp(){return wirksameZp().slice();},
+  get wirksameAg(){return wirksameAg().slice();}, get wirksameDc(){return wirksameDc().slice();},
   setZpEdit, setManualZp, addZpAt, delZp, zpAuto:()=>{ manualZp=null; selZp=null; run(); },
   selZp:(z)=>{ selZp=z; }, get manualZp(){return manualZp;}, get zpEdit(){return zpEdit;},
   get zwischenpunkte(){ return RESULT?wirksameZwischenpunkte(RESULT.wandelement):[]; },

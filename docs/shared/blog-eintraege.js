@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261103-01",
+    datum: "2026-11-03",
+    typ: "fix",
+    issue: 122,
+    titel: "Editiermodi in Modul 1: Wand wird erst bei echter Änderung manuell, nicht schon beim Einschalten oder Auswählen",
+    testbitte: "In Modul 1 „Spannachsen bearbeiten“ ein- und ausschalten, eine Achse anklicken: kein Hinweis „Spannachsen manuell“. "
+      + "Erst Setzen, Verschieben oder Löschen schaltet um; ebenso bei den drei Punkt-Editoren",
+  },
+  {
     id: "chg-20261029-04",
     datum: "2026-10-29",
     typ: "feature",

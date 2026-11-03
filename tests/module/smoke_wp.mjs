@@ -1236,7 +1236,11 @@ document.getElementById('modus').value='auto'; WP.setZpEdit(false); WP.setAxisEd
 // ---------------------------------------------------------------------------------------------
 setzeLaenge(3250); document.getElementById('hgt').value='2600';
 document.getElementById('modus').value='auto';
-WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
+WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false);
+// Manuelle Achsen der 2,00-m-Wand ([V-9]) AUSDRUECKLICH setzen. Bis zum Editiermodus-Fix
+// (Todoist 6hvWwjgqGfQVvgW5) hat schon das blosse Einschalten des Achsen-Editors im Abschnitt
+// davor die Auto-Achsen eingefroren und hierher getragen — genau der behobene Fehler.
+WP.setManualCols([1,3,5,8,11,13,15]);
 {
   const svg=()=>document.getElementById('plan').innerHTML;
   const ps=()=>store.aktivesWandelement().prestress;
@@ -1788,14 +1792,14 @@ setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
 
   WP.applyWand(Object.assign(buildWall('T106',2000,2600,[]),{wandtyp:'ohne_wind'}));
   document.getElementById('modus').value='auto'; WP.run();
-  WP.setAxisEdit(true);                       // ensureManual() uebernimmt die Auto-Achsen
+  WP.setAxisEdit(true);                       // liest nur die wirksamen (Auto-)Achsen, uebernimmt nichts
   const ZOOMS=[25,100,400];
 
   // (a) Jeder gezeichnete Achs-Bildpunkt rechnet auf GENAU diese Achse zurueck: das Anfassen
   //     legt keine zweite Achse an — bei jedem Zoomgrad und abweichendem Seitenverhaeltnis.
   for(const z of ZOOMS){
     WP.setzeZoom(z); const v=stelleRect();
-    const vorher=[...WP.manualCols], punkte=achsPunkte();
+    const vorher=[...WP.wirksameCols], punkte=achsPunkte();
     // Neu seit der Bauteildarstellung (#106): das Anzeigefeld hat GENAU das
     // viewBox-Verhaeltnis, der Letterbox-Versatz ist null und der Skalenfaktor ist der
     // Zoomfaktor. Damit ist der alte Trefferfehler konstruktiv ausgeschlossen und nicht
@@ -1807,7 +1811,7 @@ setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
     ok(`[#106] Zoom ${z} %: jede Achse ist mit Griff gezeichnet`, punkte.length===vorher.length && punkte.length>0);
     let sauber=true;
     for(const p of punkte){ feuer('pointerdown',p.sx,p.sy); los();
-      if(!gleich(WP.manualCols,vorher)) sauber=false; }
+      if(!gleich(WP.wirksameCols,vorher)) sauber=false; }
     ok(`[#106] Zoom ${z} %: Anfassen einer vorhandenen Achse verdoppelt sie nicht`, sauber);
   }
 
@@ -1819,13 +1823,13 @@ setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
     const v=view(); const rw=v.vbW*0.6, rh=v.vbH*1.4;         // schmaler UND hoeher
     const s=Math.min(rw/v.vbW, rh/v.vbH), offX=(rw-v.vbW*s)/2, offY=(rh-v.vbH*s)/2;
     planEl._rect={left:RAND_L,top:RAND_T,width:rw,height:rh};
-    const vorher=[...WP.manualCols], punkte=achsPunkte();
+    const vorher=[...WP.wirksameCols], punkte=achsPunkte();
     let sauber=punkte.length===vorher.length && punkte.length>0;
     for(const p of punkte){
       planEl.dispatch('pointerdown',{clientX:RAND_L+offX+p.sx*s, clientY:RAND_T+offY+p.sy*s,
         pointerId:3, preventDefault(){}});
       los();
-      if(!gleich(WP.manualCols,vorher)) sauber=false;
+      if(!gleich(WP.wirksameCols,vorher)) sauber=false;
     }
     ok('[#106] auch mit abweichendem Anzeigefeld trifft der Rueckweg jede Achse', sauber);
     ok('[#106] der Zusatzfall hat wirklich Letterbox-Versatz (sonst prueft er nichts)',
@@ -1835,7 +1839,7 @@ setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
   // (b) Ziehen: die ANGEFASSTE Achse wandert, die Achszahl bleibt — bei jedem Zoomgrad.
   for(const z of ZOOMS){
     WP.setzeZoom(z); stelleRect();
-    const vor=[...WP.manualCols], punkte=achsPunkte();
+    const vor=[...WP.wirksameCols], punkte=achsPunkte();
     const kQuelle=vor[0], p0=punkte[0];
     const kZiel=[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!vor.includes(k));
     feuer('pointerdown',p0.sx,p0.sy);
@@ -1843,38 +1847,38 @@ setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
     los();
     const soll=[...vor.filter(k=>k!==kQuelle),kZiel].sort((a,b)=>a-b);
     ok(`[#106] Zoom ${z} %: Ziehen verschiebt die Achse ${kQuelle} -> ${kZiel} ohne zweite Achse`,
-      gleich(WP.manualCols,soll));
+      gleich(WP.wirksameCols,soll));
   }
 
   // (c) Klick auf eine FREIE Rasterspalte legt die Achse genau dort an — nicht daneben.
   for(const z of ZOOMS){
     WP.setzeZoom(z); stelleRect();
-    const vor=[...WP.manualCols];
+    const vor=[...WP.wirksameCols];
     const kNeu=[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!vor.includes(k));
     feuer('pointerdown',sxVon(62.5+GRID*kNeu),syVon(WP.RESULT.wandelement.height_mm/2)); los();
     ok(`[#106] Zoom ${z} %: neue Achse entsteht genau bei k=${kNeu}`,
-      gleich(WP.manualCols,[...vor,kNeu].sort((a,b)=>a-b)));
+      gleich(WP.wirksameCols,[...vor,kNeu].sort((a,b)=>a-b)));
   }
   // Auch der ZellRAND traegt noch: 62,5 mm neben der Achse ist die Fangweite (halbe Rasterzelle).
   {
     WP.setzeZoom(100); stelleRect();
-    const vor=[...WP.manualCols], k=vor[0];
+    const vor=[...WP.wirksameCols], k=vor[0];
     feuer('pointerdown',sxVon(62.5+GRID*k+62.4),syVon(1000)); los();
     ok('[#106] Fangweite ist die halbe Rastereinheit (62,4 mm daneben fasst noch an)',
-      gleich(WP.manualCols,vor));
+      gleich(WP.wirksameCols,vor));
   }
 
   // (d) Dieselbe Umkehrung in der GESPIEGELTEN Ansicht (Rueckseite).
   {
     document.getElementById('viewToggle').dispatch('click');   // -> Rueckseite
     WP.setzeZoom(100); stelleRect();
-    const vor=[...WP.manualCols], punkte=achsPunkte(), kQuelle=vor[0];
+    const vor=[...WP.wirksameCols], punkte=achsPunkte(), kQuelle=vor[0];
     const kZiel=[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!vor.includes(k));
     feuer('pointerdown',punkte[0].sx,punkte[0].sy);
     feuer('pointermove',sxVon(62.5+GRID*kZiel),punkte[0].sy);
     los();
     ok('[#106] Rueckseite: gespiegelte Abbildung trifft und verschiebt dieselbe Achse',
-      gleich(WP.manualCols,[...vor.filter(k=>k!==kQuelle),kZiel].sort((a,b)=>a-b)));
+      gleich(WP.wirksameCols,[...vor.filter(k=>k!==kQuelle),kZiel].sort((a,b)=>a-b)));
     document.getElementById('viewToggle').dispatch('click');   // zurueck auf die Vorderseite
   }
 
@@ -1888,29 +1892,29 @@ setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
     !/cursor:grab/.test(planEl.innerHTML) && !/class="neuzone"/.test(planEl.innerHTML));
 
   // (f) Zwischenspannachsen: identisches Verhalten in der Lagenachse.
-  WP.setZpEdit(true);                          // ensureManualZp() uebernimmt die Auto-Hoehen
+  WP.setZpEdit(true);                          // liest nur die wirksamen (Auto-)Hoehen, uebernimmt nichts
   for(const z of ZOOMS){
     WP.setzeZoom(z); stelleRect();
-    const vorher=[...WP.manualZp], punkte=zpPunkte();
+    const vorher=[...WP.wirksameZp], punkte=zpPunkte();
     ok(`[#106] Zoom ${z} %: jede Zwischenspannachse ist mit Griff gezeichnet`,
       punkte.length===vorher.length && punkte.length>0);
     let sauber=true;
     for(const p of punkte){ feuer('pointerdown',p.sx,p.sy); los();
-      if(!gleich(WP.manualZp,vorher)) sauber=false; }
+      if(!gleich(WP.wirksameZp,vorher)) sauber=false; }
     ok(`[#106] Zoom ${z} %: Anfassen einer Zwischenspannachse verdoppelt sie nicht`, sauber);
   }
   {
     WP.setzeZoom(400); stelleRect();
-    const vor=[...WP.manualZp], p0=zpPunkte()[0], zZiel=vor[0]+400;
+    const vor=[...WP.wirksameZp], p0=zpPunkte()[0], zZiel=vor[0]+400;
     feuer('pointerdown',p0.sx,p0.sy);
     feuer('pointermove',p0.sx,syVon(zZiel));
     los();
     ok('[#106] Zwischenspannachse nach oben ziehen wechselt die Lagen-Oberkante',
-      WP.manualZp.length===vor.length && WP.manualZp.includes(zZiel) && !WP.manualZp.includes(vor[0]));
-    const vor2=[...WP.manualZp], zNeu=COURSE*2;
+      WP.wirksameZp.length===vor.length && WP.wirksameZp.includes(zZiel) && !WP.wirksameZp.includes(vor[0]));
+    const vor2=[...WP.wirksameZp], zNeu=COURSE*2;
     feuer('pointerdown',sxVon(1000),syVon(zNeu)); los();
     ok('[#106] Klick auf eine freie Lagen-Oberkante legt den Punkt genau dort an',
-      gleich(WP.manualZp,[...vor2,zNeu].sort((a,b)=>a-b)));
+      gleich(WP.wirksameZp,[...vor2,zNeu].sort((a,b)=>a-b)));
     ok('[#106] Zwischenspann-Editor zeigt Anfassen und Neuanlegen getrennt an',
       /stroke-dasharray="6 4"[^>]*cursor:grab/.test(planEl.innerHTML)
       && /class="zneu"[^>]*cursor:copy/.test(planEl.innerHTML));
@@ -1925,6 +1929,149 @@ setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
     !/getScreenCTM|createSVGPoint/.test(html)
     && /function bildPunkt\(e\)\{[\s\S]*?getBoundingClientRect/.test(html)
     && !/getAttribute\('viewBox'\)/.test(html));
+}
+document.getElementById('hgt').value='2600'; WP.run();
+
+// ---------------------------------------------------------------------------------------------
+// Editiermodi erst bei ECHTER Aenderung manuell (Felix Bauroth, 29.10.2026, Miro R01 SA 4;
+// Todoist 6hvWwjgqGfQVvgW5): Ein-/Ausschalten, Auswaehlen und die Trefferpruefung lesen nur die
+// wirksame Liste und schreiben nichts. Erst Setzen, Loeschen (Doppelklick und Knopf) oder Ziehen
+// auf eine andere Lage uebernimmt den Auto-Stand als Override. Gilt fuer alle vier Modi:
+// Spannachsen [V-9], Zwischenspannpunkte [A-17], Ausgleichspunkte [A-24], Deckenanschluss [A-27].
+// Gefahren wird der ECHTE Zeigerpfad ueber die Behandler von `#plan`.
+{
+  const planEl=document.getElementById('plan');
+  const PAD=46;
+  const view=()=>{ const w=WP.RESULT.wandelement, sc=WP.ansichtSc(), hPx=w.height_mm*sc;
+    const vbW=Math.round(w.length_mm*sc+2*PAD), vbH=Math.round(hPx+2*PAD);
+    return {L:w.length_mm,sc,hPx,vbW,vbH}; };
+  const ev=(sx,sy)=>{ const v=view(); planEl._rect={left:0,top:0,width:v.vbW,height:v.vbH};
+    return {clientX:sx, clientY:sy, pointerId:5, preventDefault(){}}; };
+  const feuer=(typ,sx,sy)=>planEl.dispatch(typ, ev(sx,sy));
+  const los=()=>globalThis.window.dispatch('pointerup',{});
+  const sxVon=xmm=>PAD+xmm*view().sc;
+  const syVon=zmm=>{ const v=view(); return PAD+v.hPx-zmm*v.sc; };
+  const gleich=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+  const ps=()=>store.aktivesWandelement().prestress;
+  const badge=()=>document.getElementById('achsBadge');
+  const frisch=()=>{ WP.applyWand(Object.assign(buildWall('EM',2000,2600,[]),{wandtyp:'ohne_wind'}));
+    document.getElementById('modus').value='auto'; WP.setzeZoom(100); WP.run(); };
+  const xAchse=k=>sxVon(62.5+GRID*k);
+
+  const MODI=[
+    { name:'Spannachsen [V-9]', an:WP.setAxisEdit, man:()=>WP.manualCols, wirk:()=>WP.wirksameCols,
+      feld:'columns_grid', ohneAuswahl:()=>WP.setManualCols(null), del:'axisDel', auto:'axisAuto',
+      autoListe:()=>WP.RESULT.wandelement.tension_columns.map(c=>c.k),
+      punkt:k=>[xAchse(k), syVon(1300)],
+      frei:l=>[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!l.includes(k)),
+      ueberschreibe:l=>({prestress:Object.assign(buildWall('x',2000,2600,[]).prestress,{columns_grid:l})}) },
+    { name:'Zwischenspannpunkte [A-17]', an:WP.setZpEdit, man:()=>WP.manualZp, wirk:()=>WP.wirksameZp,
+      feld:'zwischenpunkte_mm', ohneAuswahl:()=>WP.zpAuto(), del:'zpDel', auto:'zpAuto',
+      autoListe:()=>[...new Set(WP.zwischenpunkte.map(p=>p.z_mm))].sort((a,b)=>a-b),
+      punkt:z=>[sxVon(1000), syVon(z)],
+      frei:l=>[400,600,800,1000,1200,1400,1600,1800,2000,2200].find(z=>!l.includes(z)) },
+    { name:'Ausgleichspunkte [A-24]', an:WP.setAgEdit, man:()=>WP.manualAg, wirk:()=>WP.wirksameAg,
+      feld:'ausgleich_override_mm', ohneAuswahl:()=>WP.agAuto(), del:'agDel', auto:'agAuto',
+      autoListe:()=>[...new Set(WP.ausgleichspunkte.map(p=>p.x_mm))].sort((a,b)=>a-b),
+      punkt:x=>[sxVon(x), syVon(0)],
+      frei:l=>{ for(let x=0;x<=2000;x+=10) if(l.every(y=>Math.abs(y-x)>130)) return x; } },
+    { name:'Deckenanschluss [A-27]', an:WP.setDcEdit, man:()=>WP.manualDc, wirk:()=>WP.wirksameDc,
+      feld:'deckenanschluss_grid', ohneAuswahl:()=>WP.dcAuto(), del:'dcDel', auto:'dcAuto',
+      autoListe:()=>[...new Set(WP.deckenanschlusspunkte.map(p=>p.k))].sort((a,b)=>a-b),
+      punkt:k=>[xAchse(k), syVon(2600)],
+      frei:l=>WP.RESULT.wandelement.tension_columns.map(c=>c.k).find(k=>!l.includes(k)) },
+  ];
+  const nichtGespeichert=m=>{ const v=ps()[m.feld]; return m.feld==='columns_grid' ? !(Array.isArray(v)&&v.length) : !(m.feld in ps()); };
+
+  for(const m of MODI){
+    frisch();
+    const auto=m.autoListe();
+    ok(`[EM] ${m.name}: Ausgangslage automatisch, mit Punkten`, auto.length>0 && m.man()===null && nichtGespeichert(m));
+    // (1) Ein- und Ausschalten schreibt nichts.
+    m.an(true); WP.run();
+    ok(`[EM] ${m.name}: Einschalten laesst die Wand automatisch (kein Override, nichts gespeichert)`,
+      m.man()===null && nichtGespeichert(m) && gleich(m.wirk(),auto) && badge().hidden);
+    m.an(false); WP.run(); m.an(true);
+    ok(`[EM] ${m.name}: Aus- und wieder Einschalten ebenso`, m.man()===null && nichtGespeichert(m));
+    // (2) Auswaehlen jedes vorhandenen Punkts (pointerdown im Fang) schreibt nichts.
+    for(const p of auto){ feuer('pointerdown',...m.punkt(p)); los(); }
+    WP.run();
+    ok(`[EM] ${m.name}: Auswaehlen vorhandener Punkte laesst die Wand automatisch`,
+      m.man()===null && nichtGespeichert(m) && gleich(m.wirk(),auto) && badge().hidden);
+    // (2b) Ziehen ohne Lagewechsel (Zeiger bleibt auf dem Punkt) schreibt ebenfalls nichts.
+    feuer('pointerdown',...m.punkt(auto[0])); feuer('pointermove',...m.punkt(auto[0])); los();
+    ok(`[EM] ${m.name}: Ziehen ohne Lagewechsel aendert nichts`, m.man()===null && nichtGespeichert(m));
+    // (2c) Loeschen-Knopf ohne Auswahl und Doppelklick neben jedem Punkt aendern nichts.
+    m.ohneAuswahl();   // Auswahl der Vorschritte verwerfen (die Wand ist ohnehin automatisch)
+    document.getElementById(m.del).dispatch('click');
+    ok(`[EM] ${m.name}: Loeschen-Knopf ohne Auswahl aendert nichts`, m.man()===null && nichtGespeichert(m));
+
+    // (3) Erste echte Aenderung: Ziehen auf eine andere Lage — der Auto-Stand wird uebernommen
+    //     und die Aenderung darauf gesetzt.
+    const ziel=m.frei(auto);
+    if(m.name.startsWith('Zwischen')){
+      feuer('pointerdown',...m.punkt(auto[0])); feuer('pointermove',sxVon(1000),syVon(ziel)); los();
+    } else if(m.name.startsWith('Ausgleich')){
+      feuer('pointerdown',...m.punkt(auto[0])); feuer('pointermove',sxVon(ziel),syVon(0)); los();
+    } else {
+      feuer('pointerdown',...m.punkt(auto[0])); feuer('pointermove',...m.punkt(ziel)); los();
+    }
+    const soll=[...auto.slice(1),ziel].sort((a,b)=>a-b);
+    ok(`[EM] ${m.name}: Ziehen uebernimmt den Auto-Stand und verschiebt genau den einen Punkt`,
+      gleich(m.man(),soll) && gleich(ps()[m.feld],soll));
+    if(m.feld==='columns_grid') ok('[EM] Spannachsen: Badge erst nach der echten Aenderung', !badge().hidden);
+    // (4) Wird von Hand der Auto-Stand wiederhergestellt, bleibt die Wand manuell.
+    feuer('pointerdown',...m.punkt(ziel)); feuer('pointermove',...m.punkt(auto[0])); los();
+    ok(`[EM] ${m.name}: zurueckgezogen auf den Auto-Stand bleibt die Wand manuell`,
+      gleich(m.man(),auto) && gleich(ps()[m.feld],auto));
+    // (5) „Zurueck zu Auto" wie bisher.
+    document.getElementById(m.auto).dispatch('click');
+    ok(`[EM] ${m.name}: „Zurueck zu Auto" nimmt den Override zurueck`, m.man()===null && nichtGespeichert(m));
+
+    // (6) Setzen eines neuen Punkts ist eine echte Aenderung.
+    m.an(true);
+    const neu=m.frei(auto);
+    if(m.name.startsWith('Zwischen')) feuer('pointerdown',sxVon(1000),syVon(neu));
+    else if(m.name.startsWith('Ausgleich')) feuer('pointerdown',sxVon(neu),syVon(0));
+    else feuer('pointerdown',...m.punkt(neu));
+    los();
+    ok(`[EM] ${m.name}: neuer Punkt uebernimmt den Auto-Stand plus den Punkt`,
+      gleich(m.man(),[...auto,neu].sort((a,b)=>a-b)) && gleich(ps()[m.feld],m.man()));
+    document.getElementById(m.auto).dispatch('click');
+
+    // (7) Loeschen per Doppelklick und per Knopf (nach Auswahl) ist eine echte Aenderung.
+    m.an(true);
+    feuer('pointerdown',...m.punkt(auto[0])); los(); planEl.dispatch('dblclick', ev(...m.punkt(auto[0])));
+    ok(`[EM] ${m.name}: Doppelklick-Loeschen uebernimmt den Auto-Stand ohne den Punkt`,
+      gleich(m.man(),auto.slice(1)) && gleich(ps()[m.feld],auto.slice(1)));
+    document.getElementById(m.auto).dispatch('click'); m.an(true);
+    const letzter=auto[auto.length-1];
+    feuer('pointerdown',...m.punkt(letzter)); los();
+    ok(`[EM] ${m.name}: Auswahl vor dem Knopf-Loeschen schreibt noch nichts`, m.man()===null);
+    document.getElementById(m.del).dispatch('click');
+    ok(`[EM] ${m.name}: Loeschen-Knopf uebernimmt den Auto-Stand ohne den Punkt`,
+      gleich(m.man(),auto.slice(0,-1)) && gleich(ps()[m.feld],auto.slice(0,-1)));
+    document.getElementById(m.auto).dispatch('click'); m.an(false);
+
+    // (8) Eine geladene Wand mit vorhandenem Override (hier gleich dem Auto-Stand) bleibt
+    //     manuell — kein Abgleich „manuell == auto", keine Migration ([P-9]).
+    const w=Object.assign(buildWall('EMgeladen',2000,2600,[]),{wandtyp:'ohne_wind'});
+    w.prestress[m.feld]=auto.slice();
+    WP.applyWand(w); WP.run(); m.an(true);
+    for(const p of auto){ feuer('pointerdown',...m.punkt(p)); los(); }
+    m.an(false); WP.run();
+    ok(`[EM] ${m.name}: geladene Wand mit Override bleibt manuell`,
+      gleich(m.man(),auto) && gleich(ps()[m.feld],auto)
+      && (m.feld!=='columns_grid' || !badge().hidden));
+    document.getElementById(m.auto).dispatch('click');
+  }
+  WP.setAxisEdit(false); WP.setZpEdit(false); WP.setAgEdit(false); WP.setDcEdit(false);
+  WP.setManualCols(null); WP.zpAuto(); WP.agAuto(); WP.dcAuto();
+  planEl._rect=null; WP.setzeZoom(WP.ZOOM_FIT);
+  ok('[EM] kein ensure…() mehr beim Einschalten, Auswaehlen oder in der Trefferpruefung (Quelle)',
+    !/function (achseImFang|zpImFang|agImFang|dcImFang)\(e\)\{[^\n]*ensureManual/.test(html)
+    && !/addEventListener\('pointerdown',e=>\{ if\(!(axisEdit|zpEdit|agEdit|dcEdit)\) return; ensureManual/.test(html)
+    && !/axGedrueckt\('durchTool',false\); ensureManual/.test(html));
 }
 document.getElementById('hgt').value='2600'; WP.run();
 
