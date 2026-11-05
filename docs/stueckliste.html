@@ -324,7 +324,7 @@ let KFEHLER=null;
 let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten,
     standText, wirksameMengen, semblaBomSets;
 // #98 (Nachtrag zu #120): die eine lesende Neurechnung und die Engine dahinter.
-let wandelementAktualisiert, aktualisierteLeser, STAND_GRUND, ENG;
+let wandelementAktualisiert, aktualisierteLeser, STAND_GRUND, ENG, geteiltAusSpeicher;
 // #144/#145: der EINE Accessibility-Baustein der Suite (shared/sembla-ax.js). Modul 4 baut
 // davon nichts nach — Namen, Beschreibungen, Tooltips und die Kennzeichnung ungueltiger
 // Felder kommen ausschliesslich von dort.
@@ -350,10 +350,17 @@ function frischerStand(we){
   catch(e){
     STANDTEXT='Der Stand konnte nicht neu gerechnet werden ('+((e&&e.message)||e)
       +') — gezeigt wird der gespeicherte Stand.';
-    return we;
+    return geteilt(we);
   }
   if(!erg.aktualisiert) STANDTEXT=(STAND_GRUND&&STAND_GRUND[erg.grund])||'';
-  return erg.wandelement;
+  return geteilt(erg.wandelement);
+}
+/* [A-33] Geteilter Spannpunkt an einer Verzahnung: die Achse steht GENAU EINMAL in den
+   Stücklisten — bei der Wand, die dort das Bodenblech stellt. Lesende Sicht aus Geschoss,
+   Verzahnung und Partnerwand (sembla-wandanlage.js), nichts gespeichert. */
+function geteilt(we){
+  if(!we || !geteiltAusSpeicher || !store || !store.aktivId) return we;
+  try{ return geteiltAusSpeicher(store, store.aktivId(), we); }catch(e){ return we; }
 }
 
 // Positionen + Preisauflösung zentral (identisch zum ZIP-Export in Modul 0).
@@ -401,6 +408,8 @@ function leser(){
     holeElement: roh,
     holeEingaben: (id)=> (store&&store.holeEingaben?store.holeEingaben(id):{}),
     katalog: KATALOG, engine: ENG,
+    // [A-33] dieselbe Sicht wie die aktive Wand: geteilte Spannpunkte genau einmal.
+    verortung: (id)=> (store&&store.wandVerortung ? store.wandVerortung(id) : null),
   }) : { holeElement: roh, hinweise: [] };
   GES_HINWEISE = frisch.hinweise;
   return {
@@ -1141,6 +1150,7 @@ window.__slInit=function(){
   umfang=S.umfang; gesamtDaten=S.gesamtDaten; standText=S.standText;
   wirksameMengen=S.wirksameMengen; semblaBomSets=S.semblaBomSets;
   wandelementAktualisiert=S.wandelementAktualisiert; aktualisierteLeser=S.aktualisierteLeser;
+  geteiltAusSpeicher=S.geteiltAusSpeicher;
   STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
   AX=S.AX;
   bindEvents();
@@ -1159,7 +1169,7 @@ window.__slInit=function(){
   import * as store from './shared/storage.js';
   // #98 (dasselbe Muster wie Modul 7 seit #120): die eine lesende Neurechnung
   // (sembla-wandanlage.js) und der Rechenkern dahinter (sembla-engine.js).
-  import { wandelementAktualisiert, aktualisierteLeser, STAND_GRUND } from './shared/sembla-wandanlage.js';
+  import { wandelementAktualisiert, aktualisierteLeser, STAND_GRUND, geteiltAusSpeicher } from './shared/sembla-wandanlage.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   // Der EINE Accessibility-Baustein der Suite (#144/#145): Namen, Beschreibungen, Tooltips.
   // Stil und Tooltip-Schicht hängt bereits `mountNavbar` ein; beide Funktionen sind
@@ -1168,7 +1178,7 @@ window.__slInit=function(){
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store,
                     umfang, gesamtDaten, standText, wirksameMengen, semblaBomSets,
-                    wandelementAktualisiert, aktualisierteLeser, STAND_GRUND, AX,
+                    wandelementAktualisiert, aktualisierteLeser, STAND_GRUND, geteiltAusSpeicher, AX,
                     ENG: { autoAuslegung, nachweisPruefen } };
   AX.stilEinhaengen();
   AX.tooltips();

@@ -96,6 +96,8 @@ import {
   einbauteilZeilen, EINBAUTEIL_TITEL, FARBE as FARBE_Z, konfliktZeilen, MANGEL_TITEL,
   normOptionen as normOptionenZ, optionenAusEingaben, verzahnungZeilen,
   VERZAHNUNG as VERZAHNUNG_Z, VERZAHNUNG_TITEL, vorspannZeilen, zeichnungSvg,
+  // [A-33] Geteilter Spannpunkt an Verzahnungen — derselbe Kasten wie im HTML-Blatt.
+  geteiltZeilen, GETEILT_TITEL,
   zeichnungTitel, stangenLegendeZ,
 } from "./sembla-zeichnung.js";
 
@@ -812,6 +814,7 @@ export function wandBlattInhalt(w, eingaben = {}, opts = {}) {
   const ids = einbauteilZeilen(w);
   const mangel = konfliktZeilen(w);
   const vz = verzahnungZeilen(w);
+  const gt = geteiltZeilen(w);
 
   const inhalt = _rect(0, 0, blatt.w, blatt.h, { fuellung: "#ffffff" })
     + (o.wasserzeichen ? _wasserzeichen(blatt) : "")
@@ -824,6 +827,8 @@ export function wandBlattInhalt(w, eingaben = {}, opts = {}) {
         .map((r) => ({ art: "tab", fs: FS_IDS, wertLinks: true, label: r.label, wert: r.wert })) } : null,
       { titel: "Vorspannung", zeilen: vorspannZeilen(w)
         .map((r) => ({ art: "tab", fs: FS_TAB, label: r.label, wert: r.wert })) },
+      gt.length ? { titel: GETEILT_TITEL, zeilen: gt
+        .map((e) => ({ art: "punkt", form: "chip", fs: FS_KLEIN, text: e.text })) } : null,
       mangel.length ? { titel: MANGEL_TITEL, mangel: true, zeilen: [
         ...mangel.map((e) => ({ art: "punkt", form: "chip", fs: FS_KLEIN,
           text: `${e.text} Betrifft ${e.anzahl} Segment(e)`

@@ -2292,6 +2292,9 @@
         holeElement: (id) => store.holeElement(id),
         holeEingaben: (id) => store.holeEingaben(id),
         katalog, engine: ENG,
+        // [A-33] Geteilte Spannpunkte an Verzahnungen: die Achse steht genau einmal in den
+        // Stücklisten — bei der Wand, die dort das Bodenblech stellt (lesende Sicht).
+        verortung: (id) => (k.mappe ? MAPPE.findeWand(k.mappe, id) : null),
       });
       if (auswahl.length) {
         const erg = ARCHIV.hierarchieExport(auswahl, {

@@ -12,7 +12,7 @@
     "test:bauteile": "node tests/module/test-bauteilgleichheit.mjs",
     "test:zuschnitt": "node tests/module/test-zuschnitt.mjs",
     "test:modul0": "node tests/module/test-ax.mjs && node tests/module/smoke_start.mjs && node tests/module/test-projektmappe.mjs && node tests/module/test-constraints.mjs && node tests/module/test-plan.mjs && node tests/module/smoke_geschossplan.mjs && node tests/module/test-nachweis-export.mjs && node tests/module/test-zeichnungspdf.mjs && node tests/module/test-xlsx.mjs && node tests/module/smoke_storage.mjs",
-    "test:modul1": "node tests/module/test-engine.mjs && node tests/module/smoke_wp.mjs && node tests/module/test-verzahnung-bodenblech.mjs && node tests/module/test-bauteilgleichheit.mjs",
+    "test:modul1": "node tests/module/test-engine.mjs && node tests/module/smoke_wp.mjs && node tests/module/test-verzahnung-bodenblech.mjs && node tests/module/test-geteilter-spannpunkt.mjs && node tests/module/test-bauteilgleichheit.mjs",
     "test:modul2": "node tests/module/smoke_wandaufbau.mjs",
     "test:konfigurator": "node tests/module/smoke_konfigurator.mjs && node legacy/Modul-Wandaufbau/test-wandaufbau.mjs && node legacy/Modul-Wandaufbau/smoke_wandaufbau.mjs",
     "test:modul3": "node tests/module/test-statik.mjs && node tests/module/smoke_statik.mjs",

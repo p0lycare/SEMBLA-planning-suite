@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261105-01",
+    datum: "2026-11-05",
+    typ: "feature",
+    issue: 138,
+    titel: "Geteilter Spannpunkt an der Verzahnung: die Achse steht nur noch bei der Wand, die das Bodenblech stellt",
+    testbitte: "Zwei Wände über Eck verzahnen (eine „zweite Lage ausgespart“, die andere „unterste Lage ausgespart“): "
+      + "beide nennen „Geteilter Spannpunkt mit …“, die Eckachse steht nur einmal in der Stückliste",
+  },
+  {
     id: "chg-20261103-04",
     datum: "2026-11-03",
     typ: "feature",

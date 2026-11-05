@@ -1760,7 +1760,12 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
         && x.text.includes(NY))
       && d.vollstaendig === false
       && !d.hinweise.some((h) => h.art === "verzahnung")
-      && LP.blattHtml(d).html === LP.blattHtml(dOhne).html);
+      // [A-32] Seit R03 Teil 2 benennt das Blatt bei GLEICHER Startlage zusaetzlich die
+      // ueberlagerten Bodenbleche (eigener Kasten) — sonst bleibt es bitgleich.
+      && (was.startsWith("falsche")
+        ? LP.verbundHtml(d).includes("Bodenbleche überlagern sich")
+          && LP.blattHtml(d).html.replace(LP.verbundHtml(d), "") === LP.blattHtml(dOhne).html
+        : LP.blattHtml(d).html === LP.blattHtml(dOhne).html));
   }
   // Eine GEWOEHNLICHE Ueberlagerung — zwei parallele Waende uebereinander — bleibt
   // Kollision, auch wenn beide Waende Verzahnungsbereiche fuehren.

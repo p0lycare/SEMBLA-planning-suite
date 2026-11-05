@@ -169,7 +169,7 @@ let WALL=null, EING={}, OPT=null, currentId=null, MASSSTAB=null;
 let _selfSave=false;
 // aus window.SEMBLA (in __zInit gebunden):
 let store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen;
-let wandelementAktualisiert, STAND_GRUND, ENG, AX, stangenKatalogLaengen;
+let wandelementAktualisiert, STAND_GRUND, ENG, AX, stangenKatalogLaengen, geteiltAusSpeicher;
 /* CSS-Millimeter sind fest definiert (1 px = 1/96 Zoll) — das ist die Umrechnung des
    Bildschirmmassstabs, KEIN Papiermass. Die Papiermasse kommen ausschliesslich aus BLATT. */
 const PX_JE_MM = 96/25.4;
@@ -520,10 +520,17 @@ function aktuellerStand(we){
     // gespeicherte Stand mit benanntem Grund — geraten wird auch hier nichts.
     standMelde('Der Stand konnte nicht neu gerechnet werden ('+((e&&e.message)||e)
       +') — gezeigt wird der gespeicherte Stand.');
-    return we;
+    return geteilt(we);
   }
   standMelde(erg.aktualisiert ? '' : ((STAND_GRUND&&STAND_GRUND[erg.grund])||''));
-  return erg.wandelement;
+  return geteilt(erg.wandelement);
+}
+/* [A-33] Geteilter Spannpunkt an einer Verzahnung: die Achse wird GENAU EINMAL geführt — von
+   der Wand, die dort das Bodenblech stellt; die Partnerwand zeigt sie nur angedeutet. Lesende
+   Sicht aus Geschoss, Verzahnung und Partnerwand (sembla-wandanlage.js), nichts gespeichert. */
+function geteilt(we){
+  if(!we || !geteiltAusSpeicher || !store || !store.aktivId) return we;
+  try{ return geteiltAusSpeicher(store, store.aktivId(), we); }catch(e){ return we; }
 }
 function standMelde(t){ const el=$('standmsg'); if(el) el.textContent=t||''; }
 
@@ -612,6 +619,7 @@ window.__zInit=function(){
   standardOptionen=S.standardOptionen; druckCss=S.druckCss;
   ZEICHNUNG_CSS=S.ZEICHNUNG_CSS; BLATT=S.BLATT; blattInnen=S.blattInnen;
   wandelementAktualisiert=S.wandelementAktualisiert; STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
+  geteiltAusSpeicher=S.geteiltAusSpeicher;
   AX=S.AX; stangenKatalogLaengen=S.stangenKatalogLaengen;
   $('zcss').textContent=ZEICHNUNG_CSS;      // Blatt-CSS aus dem gemeinsamen Baustein
   axBenennen();
@@ -627,14 +635,14 @@ window.__zInit=function(){
   import * as store from './shared/storage.js';
   // #120: die eine lesende Neurechnung (sembla-wandanlage.js) und der Rechenkern dahinter
   // (sembla-engine.js) — dieselbe Engine, die Modul 1 und der Geschosseditor fahren.
-  import { wandelementAktualisiert, STAND_GRUND } from './shared/sembla-wandanlage.js';
+  import { wandelementAktualisiert, STAND_GRUND, geteiltAusSpeicher } from './shared/sembla-wandanlage.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import { stangenKatalogLaengen } from './shared/sembla-katalog.js';
   import { mountNavbar } from './shared/navbar.js';
   // #144/#145: der EINE Accessibility-Baustein der Suite — nichts davon wird hier nachgebaut.
   import * as AX from './shared/sembla-ax.js';
   window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
-    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen }, AX, stangenKatalogLaengen };
+    wandelementAktualisiert, STAND_GRUND, geteiltAusSpeicher, ENG: { autoAuslegung, nachweisPruefen }, AX, stangenKatalogLaengen };
   AX.stilEinhaengen();
   AX.tooltips();
   mountNavbar(7);

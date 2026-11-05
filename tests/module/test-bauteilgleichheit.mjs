@@ -89,6 +89,9 @@ window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung: ENG.autoAuslegu
   AUSSPARUNG: MONT.AUSSPARUNG, ZWISCHENPUNKT: MONT.ZWISCHENPUNKT,
   bodenblechLeereLuecken: MONT.bodenblechLeereLuecken, bodenblechVerzahnung: MONT.bodenblechVerzahnung,
   PARTNERBLECH: MONT.PARTNERBLECH,
+  geteiltAusSpeicher: WA.geteiltAusSpeicher, ANGEDEUTETE_ACHSE: MONT.ANGEDEUTETE_ACHSE,
+  angedeuteteAchsen: MONT.angedeuteteAchsen, angedeuteteAchseSvg: MONT.angedeuteteAchseSvg,
+  spannpunktHinweis: MONT.spannpunktHinweis,
   zwischenpunktSvg: MONT.zwischenpunktSvg, wirksameZwischenpunkte,
   DECKENANSCHLUSS: MONT.DECKENANSCHLUSS, deckenanschlussSvg: MONT.deckenanschlussSvg,
   AUSGLEICHSPUNKT: MONT.AUSGLEICHSPUNKT, ausgleichspunktSvg: MONT.ausgleichspunktSvg,
@@ -279,6 +282,60 @@ store.setzeAktiv(neu.id);
     pc = masse(m5.svg, m5.sc).spannplatte_b;
   ok(`ohne Katalog: Spannplattenbreite 110 mm in allen drei Modulen — ${pa} / ${pb} / ${pc}`,
     gleich(pa, ["110.00"]) && gleich(pb, pa) && gleich(pc, pa));
+}
+
+// ---- (5) [A-33] Angedeutete Spannachse der Partnerwand: in Modul 1, 5 und 7 gleich ----------
+// L-Stoss: A (1125, Ecke belegt die unterste Lage -> Bodenblech gekuerzt) hat eine Achse im
+// Eckfeld, B (1500, Ecke ausgespart) stellt dort das Blech und hat ebenfalls eine. Gefuehrt wird
+// die Achse von B; A zeigt sie angedeutet — in allen drei Modulen mit demselben Baustein.
+{
+  const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
+  store.fuegeProjektHinzu("Geteilter Spannpunkt");
+  store.importiereKatalogText(katText);
+  let gid = null;
+  store.aendereMappe((m) => { const g = MAPPE.fuegeGebaeudeHinzu(m, "Haus");
+    const gs = MAPPE.fuegeGeschossHinzu(g.mappe, g.id, "Erdgeschoss", 3000, "EG"); gid = gs.id; return gs.mappe; });
+  const wand = (name, L, il, lage) => {
+    const w = WA.legeWandAn(store, { name, laenge_mm: L, hoehe_mm: 3000, wandtyp: "mit_wind" });
+    const el = store.holeElement(w.id);
+    store.speichere(el.name, WA.wandelementAktualisiert({ ...el.wandelement, interlocks: il },
+      el.eingaben, store.holeKatalog(), ENG).wandelement, w.id);
+    store.verorteWand(w.id, gid, { lage });
+    return w.id;
+  };
+  const idA = wand("A", 1125, [{ g0: 0, g1: 1, start_parity: 1 }],
+    { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 9 });
+  wand("B", 1500, [{ g0: 0, g1: 1, start_parity: 0 }],
+    { start_mm: { x: 62.5, y: 0 }, richtung: "y", laenge_grid: 12 });
+  store.setzeAktivesGeschoss(gid);
+  store.setzeAktiv(idA);
+  const sicht = () => WA.geteiltAusSpeicher(store, store.aktivId(), lesestand().wandelement);
+  const m1 = modul1();
+  const w7 = sicht(), z7 = ZEICH.zeichnungSvg(w7, {});
+  const abs = MONT.montageAbschnitte(w7);
+  const svg5 = abs.map(a => MONT.abschnittSvg(w7, a)).join(""), sc5 = MONT.abschnittMasstab(w7, abs[0]);
+  const linien = (svg, sc) => [...svg.matchAll(/<line class="achse-angedeutet" data-k[^>]*>/g)].map(m => m[0]).map(t => ({
+    k: /data-k="(\d+)"/.exec(t)[1], sw: r2(attr(t, "stroke-width") / sc),
+    dash: (/stroke-dasharray="([^"]+)"/.exec(t)[1]).split(" ").map(v => r2(+v / sc)).join(" "),
+    len: r2(Math.abs(attr(t, "y2") - attr(t, "y1")) / sc),
+    farbe: /stroke="([^"]+)"/.exec(t)[1], deck: /stroke-opacity="([^"]+)"/.exec(t)[1] }));
+  const l1 = linien(m1.svg, m1.sc), l7 = linien(z7.svg, 1 / z7.masstab), l5 = linien(svg5, sc5);
+  ok("[A-33] Aufbau: A fuehrt die Eckachse nicht, zeigt sie angedeutet (Modul 1, 5, 7)",
+    l1.length === 1 && l7.length === 1 && l5.length >= 1 && l1[0].k === "0" && l7[0].k === "0"
+    && l5.every(l => l.k === "0") && !w7.tension_columns.some(c => c.k === 0));
+  ok(`[A-33] angedeutete Achse: Strichstaerke und Strichmuster in Wand-mm gleich — M1 ${l1[0]?.sw}/${l1[0]?.dash} `
+    + `M7 ${l7[0]?.sw}/${l7[0]?.dash} M5 ${l5[0]?.sw}/${l5[0]?.dash}`,
+    l1.length && gleich([l1[0].sw, l1[0].dash], [l7[0].sw, l7[0].dash])
+    && l5.every(l => gleich([l.sw, l.dash], [l1[0].sw, l1[0].dash])));
+  ok(`[A-33] angedeutete Achse: Laenge Modul 1 == Modul 7 (Wand-mm) — ${l1[0]?.len} / ${l7[0]?.len}`,
+    l1.length && l1[0].len === l7[0].len);
+  ok("[A-33] angedeutete Achse: Kennfarbe und Deckkraft gleich (ein Baustein)",
+    [...l1, ...l7, ...l5].every(l => l.farbe === MONT.ANGEDEUTETE_ACHSE.farbe
+      && +l.deck === MONT.ANGEDEUTETE_ACHSE.deckkraft));
+  ok("[A-33] Modul 1 nennt den geteilten Spannpunkt mit der Partnerwand",
+    /Geteilter Spannpunkt mit Wand_EG-\d+/.test(document.getElementById("interlockWarns").innerHTML));
+  ok("[A-33] Modul 1 speichert die Sicht nicht (Eckachse bleibt im gespeicherten Element)",
+    store.aktivesElement().wandelement.tension_columns.some(c => c.k === 0));
 }
 
 let bad = 0;

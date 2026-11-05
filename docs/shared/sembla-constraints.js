@@ -903,10 +903,14 @@ function _passendeVerzahnung(A, B, ux, uy, tabelle) {
       + `(Rasterfeld ${sa.g} bzw. ${sb.g}, Lagen wechselseitig ausgespart) — zulässige `
       + "Verzahnung, keine Kollision ([K-13]/[G-10]).",
   };
+  // [A-33] Welche der beiden Waende stellt hier das Bodenblech? Genau dann eindeutig, wenn genau
+  // eine ihr Blech behaelt ([A-32]); sonst `null` (Bleche ueberlagern sich, s. u.).
+  const befund = _blechBefund(o);
+  v.blech_von = befund === "ok" ? (_behaeltBlech(sa) ? A.id : B.id) : null;
   // [A-32] Bei ungleicher Startlage behaelt immer mindestens eine Wand ihr Blech. Behalten es
   // BEIDE, liegt eine durchlaufende Wand (Bereich mitten in der Wand) mit belegter unterster
   // Lage vor: nicht sauber loesbar — benannt zur manuellen Pruefung. Nur dann entsteht das Feld.
-  if (_blechBefund(o) === "ueberlagern") {
+  if (befund === "ueberlagern") {
     const durch = [[A.id, sa], [B.id, sb]]
       .filter(([, st]) => st.bereich.start_parity === 1).map(([id]) => id);
     v.bodenblech_durchlaufend = durch;
@@ -1104,4 +1108,43 @@ export function pruefeGeschoss(waende, bemassungen, ursprung, verzahnungen) {
   const erg = loese(waende, bemassungen, ursprung);
   const p = _paare(waende, erg.positionen, verzahnungen);
   return { ...erg, kollisionen: p.kollisionen, verzahnungen: p.verzahnungen };
+}
+
+// --- Geteilter Spannpunkt an der Verzahnung ([A-33]) ------------------------
+
+/**
+ * [A-33] Geteilte Spannpunkte eines Geschosses (Fachentscheid Felix Bauroth, 04.11.2026).
+ *
+ * An einer zulaessigen Verzahnungsstelle liegt das 125 × 125 mm grosse Feld in BEIDEN Waenden
+ * (Rasterfeld `raster.a` bzw. `raster.b`); die Feldmitte ist in beiden Waenden derselbe Punkt.
+ * Steht in einer der beiden Waende dort eine Spannachse, ist sie EINE physische Achse durch die
+ * Steine beider Waende — ein geteilter Spannpunkt. Gefuehrt (Stueckliste, Einbauteile, Montage)
+ * wird sie GENAU EINMAL, und zwar von der Wand, die dort das Bodenblech stellt (`blech_von`,
+ * [A-32]). Die andere zeigt sie nur angedeutet.
+ *
+ * Abgeleitet bei jedem Aufruf aus Wandlage, Verzahnungsbereichen und den Spannachsen der
+ * Wandelemente — gespeichert wird nichts ([K-13.1]). Ist die blechstellende Wand nicht eindeutig
+ * (Bodenbleche ueberlagern sich), bleibt `fuehrt` `null`: dann wird nichts umgehaengt, und die
+ * Stelle ist benannt zur manuellen Pruefung.
+ *
+ * @param {Array<{a:string,b:string,raster:{a:number,b:number},ort_mm:{x:number,y:number},
+ *          blech_von?:string|null}>} verzahnungen `pruefeGeschoss(...).verzahnungen`
+ * @param {(id:string)=>number[]|null} achsenVon Rasterindizes der Spannachsen je Wand
+ *        (`tension_columns[].k`); `null` = Wandelement unbekannt
+ * @returns {Array<{a:string,b:string,raster:{a:number,b:number},ort_mm:{x:number,y:number},
+ *            achse:{a:boolean,b:boolean},fuehrt:string|null,doppelt:boolean}>}
+ */
+export function geteilteSpannpunkte(verzahnungen, achsenVon) {
+  const out = [];
+  for (const v of (Array.isArray(verzahnungen) ? verzahnungen : [])) {
+    const hat = (id, g) => {
+      const ks = achsenVon(id);
+      return Array.isArray(ks) && ks.some((k) => Number(k) === g);
+    };
+    const achse = { a: hat(v.a, v.raster.a), b: hat(v.b, v.raster.b) };
+    if (!achse.a && !achse.b) continue;          // keine Achse im Feld: nichts geteilt
+    out.push({ a: v.a, b: v.b, raster: { ...v.raster }, ort_mm: { ...v.ort_mm }, achse,
+      fuehrt: v.blech_von != null ? v.blech_von : null, doppelt: achse.a && achse.b });
+  }
+  return out;
 }

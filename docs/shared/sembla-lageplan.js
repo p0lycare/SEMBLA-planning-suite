@@ -62,6 +62,8 @@ import {
   ACHSEN, BREITE_MM, FARBEN, GRID_MM, HALB_BREITE_MM, SEITEN,
   normLage, lageFehler, laengeMm, wandRechteck, wandSeiten, pruefeGeschoss, zustand,
   ursprungPunkt,
+  // [A-33] Geteilter Spannpunkt an der Verzahnung — dieselbe Zuordnung wie in den Wandausgaben.
+  geteilteSpannpunkte,
 } from "./sembla-constraints.js";
 import { massKontext, massGeometrie, massTextLayout, massAnker, massPfad } from "./sembla-massbild.js";
 import { findeGeschoss, kopfdaten as mappeKopfdaten, laengenAbgleich } from "./sembla-projektmappe.js";
@@ -538,7 +540,13 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
     meldungen.push({ art: "kollision", text:
       `Kollision: „${name(k.a)}“ und „${name(k.b)}“ überlappen sich um `
       + `${_fmt(k.ueberlappung_mm.x)} × ${_fmt(k.ueberlappung_mm.y)} mm — gemeldet, nichts `
-      + "verschoben ([K-13])." });
+      + "verschoben ([K-13])."
+      // [A-32] Gleiche Startlage an einer Verzahnung: was das fuer die Bodenbleche heisst.
+      + (k.bodenbleche === "ueberlagern"
+        ? " Gleiche Startlage beider Verzahnungsbereiche — Bodenbleche überlagern sich ([A-32])."
+        : k.bodenbleche === "fehlen"
+          ? " Gleiche Startlage beider Verzahnungsbereiche — unter der Verzahnung liegt kein Bodenblech ([A-32])."
+          : "") });
   }
   // Zulaessige Wandverzahnungen (#83): DIESELBE Rechnung, die den Paaren oben ihre
   // Kollisionsmeldung entzogen hat — `pruefeGeschoss` trennt beide Aussagen in einem
@@ -560,6 +568,49 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
     };
   });
   for (const v of verzahnungen) hinweise.push({ art: "verzahnung", text: v.text });
+  // [A-32] Durchlaufende Wand mit belegter unterster Lage an einer Verzahnung: die Bodenbleche
+  // ueberlagern sich. Dieselbe Aussage wie im Geschossplan, aus derselben Rechnung — als
+  // MELDUNG, weil die Stelle manuell zu pruefen ist (kein Baubarkeitsausschluss).
+  /** [A-32]/[A-33] Befunde an Verzahnungen fuer den eigenen Kasten des Blattes. */
+  const verbund = [];
+  for (const k of koll) {
+    if (!k.bodenbleche) continue;
+    verbund.push({ art: "kollision", warnung: true, text:
+      `„${name(k.a)}“ ↔ „${name(k.b)}“: gleiche Startlage beider Verzahnungsbereiche — `
+      + (k.bodenbleche === "ueberlagern" ? "Bodenbleche überlagern sich" : "kein Bodenblech unter der Verzahnung")
+      + " (Kollision, [K-13]/[A-32])." });
+  }
+  for (const v of (erg.verzahnungen || [])) {
+    if (!v.bodenblech_hinweis) continue;
+    const m = { art: "bodenblech_verzahnung", text:
+      `Bodenbleche überlagern sich an der Verzahnung „${name(v.a)}“ ↔ „${name(v.b)}“ `
+      + `(Rasterfeld ${v.raster.a} bzw. ${v.raster.b}): die durchlaufende Wand `
+      + `${(v.bodenblech_durchlaufend || []).map((id) => `„${name(id)}“`).join(" und ")} belegt dort `
+      + "die unterste Lage und behält ihr Bodenblech — manuell prüfen. Empfehlung: bei der "
+      + "durchlaufenden Wand „unterste Lage ausgespart“ wählen ([A-32])." };
+    meldungen.push(m);
+    verbund.push({ ...m, warnung: true });
+  }
+  // [A-33] Geteilter Spannpunkt je Wandpaar: eine Spannachse im Verzahnungsfeld ist EINE Achse
+  // durch beide Waende; gefuehrt wird sie von der Wand, die dort das Bodenblech stellt. Gelesen
+  // werden dafuer allein die Rasterlagen der Spannachsen aus den uebergebenen Wandelementen —
+  // abgeleitet, nichts gespeichert. Ein HINWEIS, kein Mangel.
+  const achsenVon = (id) => {
+    const el = nachId.get(String(id));
+    const we = el && el.wandelement;
+    return we && Array.isArray(we.tension_columns) ? we.tension_columns.map((c) => Number(c.k)) : null;
+  };
+  for (const g of geteilteSpannpunkte(erg.verzahnungen || [], achsenVon)) {
+    const na = name(g.a), nb = name(g.b);
+    const h = { art: "geteilter_spannpunkt", text:
+      `Geteilter Spannpunkt: „${na}“ ↔ „${nb}“ (Rasterfeld ${g.raster.a} bzw. ${g.raster.b}) — `
+      + (g.fuehrt
+        ? `die Spannachse führt „${name(g.fuehrt)}“ (stellt dort das Bodenblech), `
+          + `„${name(g.fuehrt === g.a ? g.b : g.a)}“ zeigt sie nur angedeutet ([A-33]).`
+        : "Zuordnung offen, die Bodenbleche überlagern sich — manuell prüfen ([A-33]).") };
+    hinweise.push(h);
+    verbund.push({ ...h, warnung: !g.fuehrt });
+  }
   for (const f of (erg.fehler || [])) {
     meldungen.push({ art: "massfehler", text: `Ungültige Bemaßung: ${f}` });
   }
@@ -600,6 +651,8 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
     kollisionen: koll,
     /** Die vom Kern als zulaessig ausgewiesenen Verzahnungsstellen (#83), benannt. */
     verzahnungen,
+    /** [A-32]/[A-33] Bodenblech- und Spannpunktbefunde an Verzahnungen — eigener Blattkasten. */
+    verbund,
     meldungen,
     hinweise,
     /** [N-7]: nur ein mangelfreier Stand wird als vollstaendig ausgegeben. */
@@ -1302,6 +1355,21 @@ export function hintergrundHtml(daten, opts) {
  * Kollisionsmeldung mehr erzeugt, darf nicht kommentarlos verschwinden. Das ist eine
  * Angabe, kein Mangel — die Vollstaendigkeit ([N-7]) bleibt unberuehrt.
  */
+/**
+ * [A-32]/[A-33] Kasten „Verzahnung – Bodenblech und Spannpunkt": ueberlagerte Bodenbleche und
+ * geteilte Spannpunkte je Wandpaar. Nur vorhanden, wenn es einen Befund gibt — sonst bleibt das
+ * Blatt bitgenau das bisherige. Vorschau, Druck und Export tragen ihn ueber `blattHtml`.
+ * @param {any} daten
+ */
+export function verbundHtml(daten) {
+  const liste = (daten && daten.verbund) || [];
+  if (!liste.length) return "";
+  return `<div class="lpbox lpverbund"><h4>Verzahnung – Bodenblech und Spannpunkt</h4>`
+    + `<ul class="lpverz-liste">`
+    + liste.map((e) => `<li${e.warnung ? ' class="warn"' : ""}>${e.warnung ? "⚠ " : ""}${_esc(e.text)}</li>`).join("")
+    + `</ul></div>`;
+}
+
 export function verzahnungHtml(daten) {
   const liste = (daten && daten.verzahnungen) || [];
   if (!liste.length) return "";
@@ -1359,6 +1427,8 @@ export function blattHtml(daten, opts) {
     // #83: ebenso — nur vorhanden, wenn der Kern wirklich eine zulaessige Verzahnung
     // ausweist. Ohne sie bleibt das Blatt bitgenau das bisherige.
     + verzahnungHtml(daten)
+    // [A-32]/[A-33] ebenso nur mit Befund: Bodenblech-Ueberlagerung und geteilte Spannpunkte.
+    + verbundHtml(daten)
     // Der fruehere Block „Vollstaendigkeit" ist mit #73 ersatzlos entfallen: das
     // Blatt ist Ausfuehrungsunterlage, keine Pruefliste. [N-7] bleibt gewahrt —
     // das Schriftfeld weist den Stand aus, und `daten.meldungen`/`hinweise` stehen
@@ -1410,6 +1480,7 @@ ${FORMATE.map((f) => `  .lpsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${bl
   /* #83: zulaessige Wandverzahnungen — nur vorhanden, wenn es welche gibt. */
   .lpverz-info{margin:0;font-size:10px;line-height:1.45;color:#4a5663}
   .lpverz-liste{margin:4px 0 0;padding-left:16px;font-size:10.5px}
+  .lpverbund .lpverz-liste li.warn{color:#c9461c}
   .lplegende{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px}
   .lplegende span{display:flex;align-items:center;gap:4px}
   .lplegende i{width:14px;height:4px;border-radius:2px;display:inline-block}

@@ -237,6 +237,27 @@ Partnerwand). Im Geschossplan trägt eine Verzahnungsstelle mit überlagerten Bl
 `bodenbleche` samt Zusatz in der Meldung (`sembla-constraints.js`). Kein Schalter, keine
 Migration, kein Schema-/Formatsprung; Wände ohne solche Verzahnung bleiben bit-gleich.
 
+**Geteilter Spannpunkt an der Verzahnung ([A-33], Fachentscheid Felix Bauroth 04.11.2026).** Eine
+Spannachse im Verzahnungsfeld (in beiden Wänden dieselbe Feldmitte) ist **eine** Achse durch beide
+Wände und wird **genau einmal** geführt — von der Wand, die dort das **Bodenblech stellt** ([A-32],
+`blech_von` an der Verzahnungsstelle aus `pruefeGeschoss`). Sie führt die **ganze** Achse (Stangen,
+Kopplungen, Fußschraube + Kopplungsmutter Fuß, Kopfteil, Deckenanschluss) in Stückliste, Einbauteilen
+und Montage; die Partnerwand zeigt sie nur **angedeutet** (`ANGEDEUTETE_ACHSE`/`angedeuteteAchseSvg`
+in `sembla-montage.js`, gestrichelt, Modul 1/5/7 gleich, `test:bauteile`). Hat nur die Partnerwand
+eine Achse dort, übernimmt die blechstellende Wand sie (`uebernommen_von`). Weil die Partnerbeziehung
+nur das Geschoss kennt ([K-13.1]), steht davon **nichts** im Core oder im Speicher: `geteilteSpannpunkte`
+(`sembla-constraints.js`) ordnet zu, `spannpunktStellen`/`mitGeteiltenSpannpunkten`/`geteiltAusSpeicher`
+(`sembla-wandanlage.js`) legen eine **lesende Sicht** über das Wandelement (`tension_columns`/`bom`/
+`deckenanschlusspunkte` angepasst, dazu `geteilte_spannpunkte`/`angedeutete_achsen`). Benutzt in
+Modul 1 (Anzeige; gespeichert wird RESULT, nie die Sicht; im Spannachsen-Editor eigene Achsen),
+Modul 4/5/7 (nach `wandelementAktualisiert`) und im Exportleser (`aktualisierteLeser({verortung})`,
+Modul 0/4). Hinweis „Geteilter Spannpunkt mit Wand_EG-n" (`spannpunktHinweis`) in Modul 1, im
+Blattkasten von Modul 7 (HTML + PDF), in der Statuszeile des Geschossplans und im Lageplan (Kasten
+„Verzahnung – Bodenblech und Spannpunkt", `verbundHtml`, mit den [A-32]-Warnungen). Ohne verortete
+Partnerwand: Achse bleibt, Hinweis „(Partnerwand nicht verortet)"; überlagerte Bleche: „Zuordnung
+offen", nichts umgehängt. Bohrungen werden nicht ausgewiesen. Kein Schema-/Formatsprung; Wände ohne
+Verzahnung bit-gleich (dasselbe Objekt).
+
 **Stangenlänge nur aus dem Katalog — kein Eingabefeld ([Z-1]).** Modul 1 hat **kein** Feld für die
 Gewindestangenlänge mehr (ersatzlos entfernt, nicht nur gesperrt): es gibt keinen zweiten Weg, die
 Vorspann-Geometrie zu setzen. Die **unterste** Stange ist immer die **größte** gewählte

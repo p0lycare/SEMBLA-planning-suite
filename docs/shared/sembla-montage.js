@@ -278,6 +278,69 @@ export const AUSSPARUNG = { farbe: "#8a6a00", label: "Bodenblech-Aussparung" };
 export const PARTNERBLECH = { farbe: "#4a6a8a", label: "Bodenblech der Partnerwand (Verzahnung)" };
 
 /**
+ * Darstellungsschluessel der ANGEDEUTETEN SPANNACHSE ([D-4], [A-33], Fachentscheid Felix Bauroth
+ * 04.11.2026). An einem geteilten Spannpunkt einer Verzahnung fuehrt die blechstellende Wand die
+ * Achse; die Partnerwand zeigt sie nur ANGEDEUTET — gestrichelt und blass, ohne Anker, ohne
+ * Stuecke, ohne Stuecklisteneintrag und ohne Einbauteil-ID. Gestrichelt ist sie auch im
+ * Schwarz-Weiss-Ausdruck von der echten (durchgezogenen, farbigen) Stange zu unterscheiden.
+ * Modul 1, 5 und 7 zeichnen sie mit demselben Baustein `angedeuteteAchseSvg`.
+ */
+export const ANGEDEUTETE_ACHSE = { farbe: "#4a6a8a", deckkraft: 0.6,
+  label: "Spannachse der Partnerwand (geteilter Spannpunkt, angedeutet)" };
+
+/** Bezeichnung einer Wand im Hinweis: der feste Wandname ([L-14]) steht fuer sich. */
+export function wandBezeichnung(name) {
+  const n = String(name || "").trim();
+  if (!n) return "Wand ohne Namen";
+  return /^Wand[_\s-]/.test(n) ? n : `Wand „${n}“`;
+}
+
+/**
+ * [A-33] Hinweistext je geteiltem Spannpunkt — EIN Wortlaut fuer Modul 1, Modul 7 und alle
+ * Ausgaben. `p` ist ein Eintrag aus `geteilte_spannpunkte`.
+ */
+export function spannpunktHinweis(p) {
+  const achse = `Spannachse Raster ${p.k}`;
+  if (p.unverortet)
+    return `Geteilter Spannpunkt (Partnerwand nicht verortet) an ${achse} — die Achse wird `
+      + "vorläufig in dieser Wand geführt; die Zuordnung zur blechstellenden Wand folgt erst mit "
+      + "der verorteten Partnerwand im Geschossplan. [A-33]";
+  const mit = `Geteilter Spannpunkt mit ${wandBezeichnung(p.partner_name)} (${achse})`;
+  if (p.fuehrt === "selbst")
+    return `${mit}: diese Wand stellt dort das Bodenblech und führt die Spannachse in Stückliste `
+      + "und Einbauteilen (Sechskantschraube von unten und Kopplungsmutter von oben vor dem "
+      + "Platzieren vorbereiten)"
+      + (p.uebernommen ? " — die Achse stammt aus der Partnerwand und ist hier übernommen" : "")
+      + (p.doppelt ? " — die Achse der Partnerwand an derselben Stelle ist dort nur angedeutet" : "")
+      + ". [A-33]";
+  if (p.fuehrt === "partner")
+    return `${mit}: geführt von der Partnerwand, die dort das Bodenblech stellt — hier nur `
+      + "angedeutet, ohne Stücklisteneintrag. [A-33]";
+  return `${mit}: Zuordnung offen — die Bodenbleche überlagern sich an der Verzahnung ([A-32]), `
+    + "die Achse bleibt in jeder Wand, die sie rechnet; manuell prüfen. [A-33]";
+}
+
+/** [A-33] Die angedeuteten Achsen eines Wandelements (lesende Sicht, nie gespeichert). */
+export function angedeuteteAchsen(w) {
+  return Array.isArray(w && w.angedeutete_achsen) ? w.angedeutete_achsen : [];
+}
+
+/**
+ * [A-33] Eine angedeutete Spannachse als gestrichelte, blasse Linie — EIN Baustein fuer Modul 1,
+ * 5 und 7. `x`, `y0`, `y1` und `sw` sind Bildeinheiten des Aufrufers; das Strichmuster haengt an
+ * der Strichstaerke und ist damit in jedem Massstab gleich proportioniert.
+ * @param {number} x @param {number} y0 @param {number} y1 @param {number} sw Strichstaerke
+ * @param {{k?:number, n?:(v:number)=>any}} [o]
+ */
+export function angedeuteteAchseSvg(x, y0, y1, sw, o = {}) {
+  const n = o.n || ((v) => v);
+  return `<line class="achse-angedeutet"${o.k != null ? ` data-k="${o.k}"` : ""} `
+    + `x1="${n(x)}" y1="${n(y0)}" x2="${n(x)}" y2="${n(y1)}" stroke="${ANGEDEUTETE_ACHSE.farbe}" `
+    + `stroke-width="${n(sw)}" stroke-opacity="${ANGEDEUTETE_ACHSE.deckkraft}" `
+    + `stroke-dasharray="${n(sw * 4)} ${n(sw * 3)}" stroke-linecap="butt" fill="none"/>`;
+}
+
+/**
  * Darstellungsschluessel des AUSGLEICHSPUNKTS ([D-4], [A-20]…[A-24]/#96/#97) — Kennfarbe und
  * Klartext der Marke, die ein Ausgleichsblech UNTER dem Bodenblech ausweist.
  *
@@ -2047,7 +2110,18 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430, opts = {}) {
   let zsp = "";
   for (const p of zp)
     zsp += zwischenpunktSvg(X(p.x_mm), Y(p.z_mm), { e: E, ...M.einlegeblech, sc });
-  s += anker + (zsp ? `<g class="zsp">${zsp}</g>` : "") + vorn + stangen + marken;
+  // [A-33] Angedeutete Achse der Partnerwand (geteilter Spannpunkt): gestrichelt, blass, ohne
+  // Anker — bis zur Oberkante der dargestellten Reihen. Schnitt 0 zeigt nur die Fussbaugruppe
+  // dieser Wand und bleibt ohne.
+  let angedeutet = "";
+  if (ab.art !== "schnitt0") {
+    const zBis = ok(li1 + 1);
+    for (const a of angedeuteteAchsen(w)) {
+      const z1 = Math.min(a.z1_mm, zBis);
+      if (z1 > a.z0_mm) angedeutet += angedeuteteAchseSvg(X(a.x_mm), Y(a.z0_mm), Y(z1), STANGE_SW, { k: a.k });
+    }
+  }
+  s += anker + (zsp ? `<g class="zsp">${zsp}</g>` : "") + angedeutet + vorn + stangen + marken;
 
   // Ereignishoehen als gestrichelte Linie mit Beschriftung
   for (const e of ab.ereignisse) {
@@ -2106,7 +2180,9 @@ function _zuschnittLegende(w, ab, x0, y, folge, xMax = Infinity) {
   const ausgespart = bodenblechLeereLuecken(w).length > 0;
   // [A-32] Ebenso das Blech der Partnerwand unter einer Verzahnung am Wandende.
   const partner = bodenblechVerzahnung(w).length > 0;
-  if (!stangen.length && !stoss && !sonderBlech && !ausgespart && !partner) return "";
+  // [A-33] Ebenso die angedeutete Spannachse der Partnerwand (nur ausserhalb von Schnitt 0).
+  const angedeutet = ab.art !== "schnitt0" && angedeuteteAchsen(w).length > 0;
+  if (!stangen.length && !stoss && !sonderBlech && !ausgespart && !partner && !angedeutet) return "";
   const txt = (lx, yy, t) => `<text x="${lx + 18}" y="${yy}" font-size="9" fill="${FARBE.text}">${t}</text>`;
   /** @type {Array<{t:string, svg:(lx:number, yy:number)=>string}>} */
   const teile = [];
@@ -2148,6 +2224,10 @@ function _zuschnittLegende(w, ab, x0, y, folge, xMax = Infinity) {
       `<rect x="${lx}" y="${yy - 7}" width="14" height="6" fill="${FARBE.stahl}" fill-opacity="0.35" `
       + `stroke="${PARTNERBLECH.farbe}" stroke-width="0.9" stroke-dasharray="2 2"/>`
       + txt(lx, yy, t) });
+  }
+  if (angedeutet) {
+    const t = ANGEDEUTETE_ACHSE.label;
+    teile.push({ t, svg: (lx, yy) => angedeuteteAchseSvg(lx + 7, yy - 9, yy + 1, 1.6) + txt(lx, yy, t) });
   }
   // Zeilen bilden: erste Zeile hinter „Zuschnitt:", Umbruch, sobald `xMax` ueberschritten wuerde.
   const zeilen = [[]];

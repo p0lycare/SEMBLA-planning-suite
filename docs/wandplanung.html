@@ -107,6 +107,9 @@
   /* Blech der Partnerwand ([A-32]/R03): blass stahlfarben, gestrichelter Rand, OHNE Kreuz. */
   .zlegende i.bpp{width:14px;height:9px;border:1px dashed currentColor;
                   background:rgba(91,102,115,.35)}
+  /* Angedeutete Spannachse der Partnerwand ([A-33]): gestrichelter, blasser senkrechter Strich. */
+  .zlegende i.ach{width:0;height:11px;background:none;border-left:2px dashed currentColor;
+                  opacity:.6;margin:0 5px}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
@@ -382,6 +385,10 @@ let hatWand=false;
 let aktWandtyp=null;
 const SIDE_LABEL={fassade:'Fassade',innenausbau:'Innenausbau',sicht:'Sichtfläche',installation:'Installation'};
 let openings=[], stepsArr=[], interlocksArr=[], VIEW='vorne', RESULT=null;
+// [A-33] Lesende Sicht auf RESULT mit den geteilten Spannpunkten an Verzahnungen (aus Geschoss,
+// Verzahnung und Partnerwand abgeleitet). Nur Anzeige — gespeichert wird RESULT, nie die Sicht.
+let SICHT=null;
+let geteiltAusSpeicher, ANGEDEUTETE_ACHSE, angedeuteteAchsen, angedeuteteAchseSvg, spannpunktHinweis;
 let showDim=true, showRaster=false;
 // ---- Bemaßungsschicht (SVG), einheitlich über die Module ----
 // #140 `OK(n)` ist die Oberkante nach `n` Steinreihen aus den kanonischen Lagenkanten — der
@@ -797,6 +804,11 @@ function run(){
       +' ('+x.typ+')').join(', ')+'. Achse ergänzen oder „Zurück zu Auto".');
   $('warns').textContent=warns.join('   ');
   renderAchsHinweis(w);
+  // [A-33] Geteilte Spannpunkte: frisch aus Geschoss + Partnerwand, nie gespeichert.
+  SICHT=null;
+  if(geteiltAusSpeicher && store && store.aktivId){
+    try{ SICHT=geteiltAusSpeicher(store, store.aktivId(), w); }catch(e){ SICHT=null; }
+  }
   // Verzahnungs-Validierung anzeigen ([G-10]/[G-11]/[G-12])
   renderInterlockWarns(vv);
   draw(w);
@@ -837,6 +849,10 @@ function renderIter(its){ const tb=$('itTable').querySelector('tbody'); tb.inner
     tr.innerHTML=`<td>${i+1}</td><td>${it.max_span_grid} Raster</td><td>${it.strands}</td><td>${it.N!=null?fmt(it.N,0):'–'}</td><td>${it.util!=null?pct(it.util):'–'}</td><td><span class="pill ${it.ok?'ok':'no'}">${it.ok?'ok':'!'}</span></td>`; tb.appendChild(tr); }); }
 
 function draw(w){
+  // [A-33] Gezeichnet wird die Sicht mit den geteilten Spannpunkten: eine Achse, die die
+  // Partnerwand führt, steht angedeutet statt durchgezogen. Im Spannachsen-Editor bleibt es bei
+  // den eigenen Achsen dieser Wand — dort wird an ihnen gearbeitet.
+  if(!axisEdit && SICHT && RESULT && w===RESULT.wandelement) w=SICHT;
   const svg=$('plan'), pad=46, L=w.length_mm, H=w.height_mm;
   // FESTER Masstab (#106): der viewBox waechst mit der Wand, statt die Wand in einen festen
   // viewBox zu pressen. Damit ist ein Stein in jeder Wand gleich gross — siehe ansichtSc().
@@ -1146,6 +1162,10 @@ function draw(w){
   // hingesehen wird. Auf ihre Breite lässt sich das seit #97 NICHT mehr stützen: mit geführter
   // Schlüsselweite ist sie maßstabsgetreu und damit schmaler als zuvor. Das ist gewollt —
   // abgemessen wird das Bauteil, nicht das Symbol.
+  // [A-33] Angedeutete Spannachse der Partnerwand (geteilter Spannpunkt): gestrichelt, blass,
+  // ohne Anker — derselbe Baustein wie Modul 5 und 7. Vor den Bauteilgruppen, verdeckt nichts.
+  for(const a of (angedeuteteAchsen?angedeuteteAchsen(w):[]))
+    s+=angedeuteteAchseSvg(X(a.x_mm),Y(a.z0_mm),Y(a.z1_mm),STANGE_SW,{k:a.k});
   s+=vorn;
 
   // Vordergrund der GEWINDESTANGEN (#112): eigene Gruppe ZULETZT von allen Wandbauteilen —
@@ -1315,7 +1335,10 @@ function renderZLegende(w){
       + `${AUSSPARUNG.label} (kein Bodenblech)</span>` : '';
   const bppEintrag = (w && bodenblechVerzahnung(w).length)
     ? `<span><i class="bpp" style="color:${PARTNERBLECH.farbe}"></i>${PARTNERBLECH.label}</span>` : '';
-  const blechEintraege = bstEintrag+bsoEintrag+basEintrag+bppEintrag;
+  // [A-33] Angedeutete Spannachse der Partnerwand — nur, wenn sie im Bild steht.
+  const achEintrag = (w && angedeuteteAchsen && angedeuteteAchsen(w).length)
+    ? `<span><i class="ach" style="color:${ANGEDEUTETE_ACHSE.farbe}"></i>${ANGEDEUTETE_ACHSE.label}</span>` : '';
+  const blechEintraege = bstEintrag+bsoEintrag+basEintrag+bppEintrag+achEintrag;
   const alle=w?w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]):[];
   // Ohne bestimmten Zuschnitt gibt es KEINE Zuschnittlegende — die Blecheintraege haengen
   // aber nicht an der Stangenzerlegung und laufen deshalb hier mit.
@@ -1469,7 +1492,7 @@ function vzBlechText(h){
       +'Bodenblech; manuell prüfen. [A-32]';
   if(h.grund==='achse_auf_partnerblech')
     return 'ℹ Spannachse '+fmt(h.x_mm/10,2)+' cm (Raster '+h.k+') steht im gekürzten Feld — ihre '
-      +'Fußschraube sitzt auf dem Bodenblech der Partnerwand; Bohrung dort prüfen. [A-32]';
+      +'Fußschraube sitzt auf dem Bodenblech der Partnerwand. [A-32]';
   return '⚠ Bodenblech im Verband: '+h.grund+' [A-32]';
 }
 function renderInterlockWarns(vv){
@@ -1493,7 +1516,14 @@ function renderInterlockWarns(vv){
       +') entfällt — dort liegt das Bodenblech der Partnerwand; der Stein der untersten Lage '
       +'überbrückt die Blechfuge. Abgeleitet, nicht gespeichert.');
   }
-  for(const h of (vv.verzahnung_bodenblech||[])) warns.push(vzBlechText(h));
+  // [A-33] Eine Achse im gekürzten Feld ist ein geteilter Spannpunkt — sie steht unten mit
+  // Partnerwand und Zuordnung; der allgemeine [A-32]-Hinweis entfällt dann für sie.
+  const gsp=(SICHT&&SICHT.geteilte_spannpunkte)||[];
+  for(const h of (vv.verzahnung_bodenblech||[])){
+    if(h.grund==='achse_auf_partnerblech' && gsp.some(p=>p.k===h.k)) continue;
+    warns.push(vzBlechText(h));
+  }
+  for(const p of gsp) warns.push((p.fuehrt||p.unverortet?'ℹ ':'⚠ ')+spannpunktHinweis(p));
   box.innerHTML=warns.map(w=>'<div>'+w+'</div>').join('');
 }
 
@@ -2679,6 +2709,9 @@ window.__wpInit=function(){
   bodenblechAussparungen=S.bodenblechAussparungen; AUSSPARUNG=S.AUSSPARUNG;
   bodenblechLeereLuecken=S.bodenblechLeereLuecken; bodenblechVerzahnung=S.bodenblechVerzahnung;
   PARTNERBLECH=S.PARTNERBLECH;
+  geteiltAusSpeicher=S.geteiltAusSpeicher; ANGEDEUTETE_ACHSE=S.ANGEDEUTETE_ACHSE;
+  angedeuteteAchsen=S.angedeuteteAchsen; angedeuteteAchseSvg=S.angedeuteteAchseSvg;
+  spannpunktHinweis=S.spannpunktHinweis;
   DECKENANSCHLUSS=S.DECKENANSCHLUSS; deckenanschlussSvg=S.deckenanschlussSvg;
   AUSGLEICHSPUNKT=S.AUSGLEICHSPUNKT; ausgleichspunktSvg=S.ausgleichspunktSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
@@ -2733,6 +2766,8 @@ window.__wpInit=function(){
            bodenblechAussparungen, AUSSPARUNG,
            // [A-32]/R03: Blech der Partnerwand unter einer Verzahnung am Wandende.
            bodenblechLeereLuecken, bodenblechVerzahnung, PARTNERBLECH,
+           // [A-33]: angedeutete Spannachse der Partnerwand und der EINE Hinweiswortlaut.
+           ANGEDEUTETE_ACHSE, angedeuteteAchsen, angedeuteteAchseSvg, spannpunktHinweis,
            // #140 die EINE erlaubte Umrechnung Reihenzahl -> Hoehe ([D-4]).
            lagenOberkanteMm,
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg,
@@ -2744,7 +2779,7 @@ window.__wpInit=function(){
   import * as AX from './shared/sembla-ax.js';
   // #136 `ausgleichSteinHoehen` ist der gemeinsame Baustein der Ausgleichsstein-Kataloghöhen
   // ([G-16]) — dieselbe Ableitung, die der Read-only-Frischpfad und der Sammel-Editor nutzen.
-  import { ROLLE_RECHNUNG, ausgleichSteinHoehen } from './shared/sembla-wandanlage.js';
+  import { ROLLE_RECHNUNG, ausgleichSteinHoehen, geteiltAusSpeicher } from './shared/sembla-wandanlage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT, AX,
                     wandLagenKanten, lagenOberkanteMm,
@@ -2755,6 +2790,8 @@ window.__wpInit=function(){
                     bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
                     bodenblechAussparungen, AUSSPARUNG,
                     bodenblechLeereLuecken, bodenblechVerzahnung, PARTNERBLECH,
+                    geteiltAusSpeicher, ANGEDEUTETE_ACHSE, angedeuteteAchsen, angedeuteteAchseSvg,
+                    spannpunktHinweis,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,
                     AUSGLEICHSPUNKT, ausgleichspunktSvg,

@@ -27,7 +27,9 @@
  * Datei nicht an `localStorage` haengt und die Aufruffolge in Tests pruefbar bleibt.
  */
 
-import { buildWall, Opening, ROD_OVERHANG } from "./sembla-core.js";
+import { buildWall, Opening, ROD_OVERHANG, GRID, CHAMBER_OFFSET } from "./sembla-core.js";
+import { pruefeGeschoss, ursprungPunkt, geteilteSpannpunkte } from "./sembla-constraints.js";
+import { findeWand } from "./sembla-projektmappe.js";
 import { produktSpezifikation, produktrollenVorschlag, produkteZuRolle, rollenVonModul, rolle, produktMassWert } from "./sembla-katalog.js";
 
 /** Verwendungsrollen gehoeren Modul 1 (`planung`) oder Modul 2 (`aufbau`) — sonst nichts. */
@@ -586,6 +588,13 @@ export function wandelementAktualisiert(wandelement, eingaben, katalog, engine) 
 export function aktualisierteLeser(p) {
   /** @type {Map<string, any>} */
   const cache = new Map();
+  // [A-33] Optional die Verortung je Wand (`(id) => {geschoss, wand}|null`): dann traegt jedes
+  // gelieferte Element zusaetzlich die geteilten Spannpunkte (lesende Sicht, nichts gespeichert).
+  // Die Partnerwaende kommen dabei aus DIESEM Leser (frisch, ohne Sicht) — jede Wand wird weiter
+  // genau einmal gerechnet.
+  const verortung = typeof p.verortung === "function" ? p.verortung : null;
+  /** @type {Map<string, any>} */
+  const sichtCache = new Map();
   /** @type {Array<{id:string, name:string|null, grund:string, text:string}>} */
   const hinweise = [];
   const holeElement = (id) => {
@@ -615,5 +624,216 @@ export function aktualisierteLeser(p) {
     cache.set(key, erg);
     return erg;
   };
-  return { holeElement, hinweise };
+  if (!verortung) return { holeElement, hinweise };
+  const mitSicht = (id) => {
+    const key = String(id);
+    if (sichtCache.has(key)) return sichtCache.get(key);
+    const el = holeElement(key);
+    let erg = el;
+    if (el && el.wandelement) {
+      let ort = null;
+      try { ort = verortung(key); } catch { ort = null; }
+      const we = mitGeteiltenSpannpunkten(el.wandelement,
+        spannpunktStellen(ort, key, holeElement, el.wandelement));
+      if (we !== el.wandelement) erg = { ...el, wandelement: we };
+    }
+    sichtCache.set(key, erg);
+    return erg;
+  };
+  return { holeElement: mitSicht, hinweise };
+}
+
+// ---------- Geteilter Spannpunkt an der Verzahnung ([A-33], Fachentscheid Felix Bauroth 04.11.2026) ----------
+// An einer Ecke oder einem T-Anschluss liegt das Verzahnungsfeld in BEIDEN Waenden; eine
+// Spannachse dort ist EINE physische Achse durch die Steine beider Waende. Gefuehrt wird sie
+// genau einmal — von der Wand, die dort das Bodenblech stellt ([A-32]): „Die Wand, welche das
+// Blech fuer den unteren Spannpunkt stellt, listet auch die Elemente der Spannachse auf." Die
+// Partnerwand zeigt sie nur angedeutet, ohne Stuecklisteneintrag und ohne Einbauteil-ID.
+//
+// Die Beziehung zwischen zwei Waenden kennt nur das Geschoss ([K-13.1]). Deshalb entsteht die
+// Zuordnung NIE im Rechenkern und wird NIE gespeichert: sie wird bei jeder Ausgabe frisch aus
+// Wandlage, Verzahnungsbereichen und Spannachsen abgeleitet (`geteilteSpannpunkte` in
+// sembla-constraints.js) und als LESENDE Sicht auf das Wandelement gelegt
+// (`mitGeteiltenSpannpunkten`). Das gespeicherte Wandelement bleibt unberuehrt ([P-1]).
+// Ohne eindeutige Zuordnung (keine verortete Partnerwand, Bleche ueberlagern sich) wird
+// nichts umgehaengt — benannt wird es trotzdem.
+
+/** Spannachsen-Rasterindizes eines Wandelements (`null` = kein Wandelement). */
+function _achsenK(we) {
+  return we && Array.isArray(we.tension_columns) ? we.tension_columns.map((c) => Number(c.k)) : null;
+}
+
+/**
+ * [A-33] Die geteilten Spannpunkte EINER Wand, aus Sicht dieser Wand. Rein — der Speicher wird
+ * als Leser hereingereicht.
+ *
+ * @param {{geschoss:any, wand:any}|null} ort Verortung der Wand (`store.wandVerortung(id)`
+ *        bzw. `findeWand(mappe, id)`); `null` = in keinem Geschoss eingetragen
+ * @param {string} wandId
+ * @param {(id:string)=>any} holeElement Elementleser `{id,name,wandelement}` der Partnerwaende
+ * @param {any} [eigenesElement] Wandelement dieser Wand, falls frischer als der Speicher
+ *        (Modul 1 rechnet gerade) — sonst aus `holeElement`
+ * @returns {{stellen:Array<{k:number,x_mm:number,partner_id:string,partner_name:string,
+ *            partner_k:number,fuehrt:"selbst"|"partner"|null,eigene_achse:boolean,
+ *            partner_achse:boolean,doppelt:boolean,partner_spalte:any,partner_dc:boolean}>,
+ *            offen:Array<{k:number,x_mm:number}>}}
+ *   `offen` = Spannachsen in einem eigenen Verzahnungsbereich ohne erkannte Partnerwand
+ *   (neutraler Hinweis „Partnerwand nicht verortet").
+ */
+export function spannpunktStellen(ort, wandId, holeElement, eigenesElement) {
+  const id = String(wandId);
+  const lies = (x) => { try { return holeElement ? holeElement(x) : null; } catch { return null; } };
+  const weVon = (x) => {
+    if (x === id && eigenesElement) return eigenesElement;
+    const el = lies(x);
+    return el && el.wandelement ? el.wandelement : null;
+  };
+  const eigen = weVon(id);
+  const stellen = [];
+  if (ort && ort.geschoss && ort.wand && ort.wand.lage) {
+    const gs = ort.geschoss;
+    const waende = gs.waende || [];
+    /** @type {Map<string, any>} */
+    const tabelle = new Map();
+    for (const w of waende) {
+      const we = weVon(String(w.id));
+      if (we && Array.isArray(we.interlocks) && we.interlocks.length) tabelle.set(String(w.id), we.interlocks);
+    }
+    if (tabelle.has(id)) {
+      const erg = pruefeGeschoss(waende, gs.bemassungen || [], ursprungPunkt(gs.ursprung_mm), tabelle);
+      const eigeneStellen = (erg.verzahnungen || []).filter((v) => v.a === id || v.b === id);
+      for (const g of geteilteSpannpunkte(eigeneStellen, (x) => _achsenK(weVon(x)))) {
+        const ichA = g.a === id, pid = ichA ? g.b : g.a;
+        const k = ichA ? g.raster.a : g.raster.b, pk = ichA ? g.raster.b : g.raster.a;
+        const pwe = weVon(pid), pel = lies(pid);
+        const pw = waende.find((w) => String(w.id) === pid);
+        const spalte = pwe ? (pwe.tension_columns || []).find((c) => Number(c.k) === pk) || null : null;
+        stellen.push({
+          k, x_mm: CHAMBER_OFFSET + GRID * k,
+          partner_id: pid,
+          partner_name: (pel && pel.name) || (pw && pw.name) || (pwe && pwe.name) || pid,
+          partner_k: pk,
+          fuehrt: g.fuehrt == null ? null : (g.fuehrt === id ? "selbst" : "partner"),
+          eigene_achse: ichA ? g.achse.a : g.achse.b,
+          partner_achse: ichA ? g.achse.b : g.achse.a,
+          doppelt: g.doppelt,
+          partner_spalte: spalte,
+          partner_dc: !!(pwe && (pwe.deckenanschlusspunkte || []).some((d) => Number(d.k) === pk)),
+        });
+      }
+    }
+  }
+  // Neutral: eine eigene Spannachse in einem eigenen Verzahnungsbereich, fuer die keine
+  // Verzahnungsstelle mit verorteter Partnerwand erkannt ist.
+  const offen = [];
+  if (eigen && Array.isArray(eigen.interlocks) && eigen.interlocks.length) {
+    const belegt = new Set(stellen.map((s) => s.k));
+    for (const c of (eigen.tension_columns || [])) {
+      const k = Number(c.k);
+      if (belegt.has(k)) continue;
+      if (eigen.interlocks.some((b) => Number(b.g0) <= k && k < Number(b.g1)))
+        offen.push({ k, x_mm: c.x_mm });
+    }
+  }
+  return { stellen, offen };
+}
+
+/** Mengen einer Spannachse, die der Rechenkern in `bom` aufsummiert (Vorzeichen f). */
+function _bomAchse(bom, col, f) {
+  const n = (v) => (Number.isFinite(+v) ? +v : 0);
+  const senk = n(col.senkkopfschrauben);
+  const verschnitt = (col.segments || []).reduce((a, sg) => a + n(sg.verschnitt_mm), 0);
+  if (bom.gewindestangen != null) bom.gewindestangen += f * n(col.gewindestangen);
+  if (bom.verbindungsmuttern != null) bom.verbindungsmuttern += f * n(col.verbindungsmuttern);
+  if (bom.senkkopfschrauben != null) bom.senkkopfschrauben += f * senk;
+  if (bom.kopplungsmuttern_basis != null) bom.kopplungsmuttern_basis += f * senk;
+  if (bom.spannplatten != null) bom.spannplatten += f * n(col.spannplatten);
+  if (bom.spannmuttern != null) bom.spannmuttern += f * n(col.spannmuttern);
+  if (bom.verschnitt_mm != null) bom.verschnitt_mm += f * verschnitt;
+}
+
+/** Angedeutete Achse: senkrechte Strecke von der Sohle bis zur Oberkante ihrer Segmente. */
+function _andeutung(col, k, we, st, quelle) {
+  const segs = col.segments || [];
+  const z1 = segs.reduce((a, sg) => Math.max(a, +sg.z1_mm || 0), 0);
+  const h = Number.isFinite(+we.height_mm) ? +we.height_mm : z1;
+  return { k, x_mm: CHAMBER_OFFSET + GRID * k, z0_mm: 0, z1_mm: Math.min(z1, h),
+    partner_id: st.partner_id, partner_name: st.partner_name, quelle };
+}
+
+/**
+ * [A-33] Lesende Sicht auf ein Wandelement mit den geteilten Spannpunkten: die Achse an einer
+ * Verzahnungsstelle steht GENAU EINMAL in den Spannachsen — bei der blechstellenden Wand.
+ *  - fuehrt die PARTNERWAND: eine eigene Achse an der Stelle faellt aus `tension_columns`
+ *    (damit aus Einbauteilen, Stueckliste, Montage) und aus den Mengen in `bom`; ihr
+ *    Deckenanschluss ebenso. Sie bleibt als `angedeutete_achsen`-Eintrag sichtbar. Hat nur die
+ *    Partnerwand eine Achse, wird DEREN Achse hier angedeutet.
+ *  - fuehrt DIESE Wand und hat sie selbst keine Achse an der Stelle, aber die Partnerwand: die
+ *    Achse der Partnerwand wird uebernommen (`uebernommen_von`), samt ihrer Mengen und ihres
+ *    Deckenanschlusses.
+ *  - ohne eindeutige Zuordnung (`fuehrt: null`) aendert sich nichts.
+ * Dazu `geteilte_spannpunkte` (je Stelle Partner und Zuordnung) fuer die Hinweise. Ohne Stellen
+ * kommt das Wandelement UNVERAENDERT (dasselbe Objekt) zurueck — Waende ohne Verzahnung bleiben
+ * bit-gleich. Nie gespeichert.
+ *
+ * @param {any} we Wandelement
+ * @param {{stellen:any[], offen?:any[]}|any[]} geteilt Ergebnis von `spannpunktStellen`
+ */
+export function mitGeteiltenSpannpunkten(we, geteilt) {
+  const stellen = Array.isArray(geteilt) ? geteilt : ((geteilt && geteilt.stellen) || []);
+  const offen = Array.isArray(geteilt) ? [] : ((geteilt && geteilt.offen) || []);
+  if (!we || (!stellen.length && !offen.length)) return we;
+  let cols = (we.tension_columns || []).slice();
+  const bom = { ...(we.bom || {}) };
+  let dc = Array.isArray(we.deckenanschlusspunkte) ? we.deckenanschlusspunkte.slice() : null;
+  const angedeutet = [], info = [];
+  for (const st of stellen) {
+    const i = cols.findIndex((c) => Number(c.k) === st.k);
+    let uebernommen = false, angedeutetAus = null;
+    if (st.fuehrt === "partner") {
+      if (i >= 0) {
+        const col = cols[i];
+        cols = cols.filter((_, j) => j !== i);
+        _bomAchse(bom, col, -1);
+        if (dc) dc = dc.filter((d) => Number(d.k) !== st.k);
+        angedeutet.push(_andeutung(col, st.k, we, st, "eigen"));
+        angedeutetAus = "eigen";
+      } else if (st.partner_spalte) {
+        angedeutet.push(_andeutung(st.partner_spalte, st.k, we, st, "partner"));
+        angedeutetAus = "partner";
+      }
+    } else if (st.fuehrt === "selbst" && i < 0 && st.partner_spalte) {
+      const col = { ...JSON.parse(JSON.stringify(st.partner_spalte)),
+        k: st.k, x_mm: CHAMBER_OFFSET + GRID * st.k, uebernommen_von: st.partner_name };
+      cols = [...cols, col].sort((a, b) => a.k - b.k);
+      _bomAchse(bom, col, +1);
+      if (dc && st.partner_dc && !dc.some((d) => Number(d.k) === st.k))
+        dc = [...dc, { k: st.k, x_mm: col.x_mm, art: "uebernommen" }].sort((a, b) => a.k - b.k);
+      uebernommen = true;
+    }
+    info.push({ k: st.k, x_mm: st.x_mm, partner_id: st.partner_id, partner_name: st.partner_name,
+      partner_k: st.partner_k, fuehrt: st.fuehrt, doppelt: st.doppelt, uebernommen,
+      angedeutet: angedeutetAus });
+  }
+  for (const o of offen) info.push({ k: o.k, x_mm: o.x_mm, partner_id: null, partner_name: null,
+    partner_k: null, fuehrt: null, doppelt: false, uebernommen: false, angedeutet: null,
+    unverortet: true });
+  info.sort((a, b) => a.k - b.k);
+  const out = { ...we, tension_columns: cols, bom, geteilte_spannpunkte: info };
+  if (dc) out.deckenanschlusspunkte = dc;
+  if (angedeutet.length) out.angedeutete_achsen = angedeutet;
+  return out;
+}
+
+/**
+ * [A-33] Die geteilten Spannpunkte einer Wand aus dem Speicher anwenden — der gemeinsame Weg
+ * fuer Modul 1/4/5/7. Der Speicher wird hereingereicht (`wandVerortung`, `holeElement`).
+ * @param {any} store @param {string|null} wandId @param {any} we (frisches) Wandelement
+ */
+export function geteiltAusSpeicher(store, wandId, we) {
+  if (!we || !wandId || !store) return we;
+  let ort = null;
+  try { ort = store.wandVerortung ? store.wandVerortung(wandId) : null; } catch { ort = null; }
+  const g = spannpunktStellen(ort, wandId, (x) => store.holeElement(x), we);
+  return mitGeteiltenSpannpunkten(we, g);
 }

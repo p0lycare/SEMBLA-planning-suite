@@ -3779,7 +3779,7 @@ function render(){
       : GP.werkzeug === 'plan' ? ' schiebt'
       : GP.werkzeug === 'bemassen' || GP.werkzeug === 'ursprung' ? ' zeichnet' : '');
   inlineSync();
-  statusSync(erg, koll, verz);
+  statusSync(erg, koll, verz, els);
   listeSync(erg, koll, els);
   kopfSync();
 }
@@ -3801,7 +3801,7 @@ function inlineSync(){
 // ---------------------------------------------------------------------------
 //  Oberfläche außerhalb der Zeichenfläche
 // ---------------------------------------------------------------------------
-function statusSync(erg, koll, verz){
+function statusSync(erg, koll, verz, els){
   const verortet = waende().filter(w => w.lage != null).length;
   const teile = [
     `<span><b>${waende().length}</b> Wand/Wände · <b>${verortet}</b> verortet</span>`,
@@ -3835,6 +3835,19 @@ function statusSync(erg, koll, verz){
         + `${v.bodenblech_durchlaufend.map(namenRoh).join(', ')})`).join(', '))
       + ' — manuell prüfen. Empfehlung: bei der durchlaufenden Wand „unterste Lage ausgespart“ '
       + 'wählen ([A-32])</span>');
+  }
+  // [A-33] Geteilter Spannpunkt je Wandpaar: eine Spannachse im Verzahnungsfeld ist EINE Achse
+  // durch beide Wände; geführt wird sie von der Wand, die dort das Bodenblech stellt. Dieselbe
+  // Zuordnung wie in Modul 1/4/5/7 und im Lageplan — nur gelesen, nichts gespeichert.
+  const achsen = id => { const e = els && els.get(id); const we = e && e.wandelement;
+    return we && Array.isArray(we.tension_columns) ? we.tension_columns.map(c => c.k) : null; };
+  const gsp = els ? CON.geteilteSpannpunkte(verz || [], achsen) : [];
+  if (gsp.length) {
+    teile.push(`<span class="gp-geteilt">ℹ ${gsp.length} geteilte(r) Spannpunkt(e): `
+      + esc(gsp.map(g => `${namenRoh(g.a)} ↔ ${namenRoh(g.b)} (Rasterfeld ${g.raster.a} bzw. `
+        + `${g.raster.b}: ${g.fuehrt ? 'Achse führt ' + namenRoh(g.fuehrt) + ', die andere angedeutet'
+          : 'Zuordnung offen, Bodenbleche überlagern sich'})`).join(', '))
+      + ' ([A-33])</span>');
   }
   if (erg.widersprueche.length) {
     // [K-6]: benannt wird das beteiligte Maß und die Differenz in mm — nie gemittelt,

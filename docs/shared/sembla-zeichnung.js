@@ -56,6 +56,9 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          // [A-32]/R03: Blech der Partnerwand unter einer Verzahnung am Wandende — dieselbe
          // Quelle, aus der `bodenblechSvg()` das Feld zeichnet ([D-4]).
          bodenblechLeereLuecken, bodenblechVerzahnung, PARTNERBLECH,
+         // [A-33]: angedeutete Spannachse der Partnerwand (geteilter Spannpunkt) und der EINE
+         // Hinweiswortlaut — dieselben Bausteine wie in Modul 1 und Modul 5 ([D-4]).
+         ANGEDEUTETE_ACHSE, angedeuteteAchsen, angedeuteteAchseSvg, spannpunktHinweis,
          // #110: EINE Symbolquelle der Spannkomponenten fuer Wandansicht und Zeichnung ([D-4]).
          // #106: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
          // `SPANN_MM` liefert seit #121 den realen Stangendurchmesser, aus dem Stange und
@@ -323,6 +326,30 @@ export const MANGEL_TITEL = "Zuschnittkonflikte – Blatt unvollständig";
  * vermischen).
  */
 export const VERZAHNUNG_TITEL = "Verzahnung – regelwidrige Bereiche";
+
+/**
+ * Ueberschrift des Kastens „Geteilter Spannpunkt" ([A-33]). Kein Mangel: eine geteilte Achse an
+ * einer Verzahnung ist der Regelfall; der Kasten sagt, welche Wand sie fuehrt.
+ */
+export const GETEILT_TITEL = "Geteilter Spannpunkt (Verzahnung)";
+
+/**
+ * [A-33] Zeilen je geteiltem Spannpunkt der Wand — leer ohne Befund (kein leerer Kasten).
+ * Gelesen wird allein die lesende Sicht `geteilte_spannpunkte`; der Wortlaut ist derselbe wie in
+ * Modul 1 (`spannpunktHinweis`).
+ */
+export function geteiltZeilen(w) {
+  const z = (w && Array.isArray(w.geteilte_spannpunkte)) ? w.geteilte_spannpunkte : [];
+  return z.map((p) => ({ k: p.k, text: spannpunktHinweis(p) }));
+}
+/** [A-33] Kasteninhalt „Geteilter Spannpunkt" (HTML-Blatt) — leer ohne Befund. */
+export function geteiltHtml(w) {
+  const z = geteiltZeilen(w);
+  if (!z.length) return "";
+  return `<div class="zmangel geteilt">`
+    + z.map((e) => `<div><span class="chip"></span><span>${_esc(e.text)}</span></div>`).join("")
+    + `</div>`;
+}
 
 /** Titel der Einbauteil-ID-Tabelle des Blattes ([P-19]). */
 export const EINBAUTEIL_TITEL = "Einbauteile Gewindestangen – IDs je Spannachse";
@@ -938,6 +965,13 @@ export function zeichnungSvg(w, opts = {}) {
   // Breite laesst sich das seit #97 NICHT mehr stuetzen: mit gefuehrter Schluesselweite ist
   // sie masstabstreu und bei kleinem Blattmasstab schmaler als die Stangenlinie (SW 17 bei
   // 1:100 = 0,17 Papier-mm). Das ist gewollt — abgemessen wird das Bauteil, nicht das Symbol.
+  // [A-33] Angedeutete Spannachse der Partnerwand (geteilter Spannpunkt an der Verzahnung):
+  // gestrichelt und blass, ohne Anker und ohne Stuecke — sie gehoert nicht zu dieser Wand und
+  // steht deshalb weder in der Stueckliste noch in den Einbauteil-IDs. Vor den Bauteilgruppen,
+  // damit sie nichts verdeckt.
+  const andeut = angedeuteteAchsen(w).map((a) =>
+    angedeuteteAchseSvg(X(a.x_mm), Y(a.z0_mm), Y(a.z1_mm), STANGE_SW, { k: a.k, n: _n })).join("");
+  if (andeut) s += `<g class="ach">${andeut}</g>`;
   if (vorn) s += `<g class="kop">${vorn}</g>`;
 
   // Vordergrund der GEWINDESTANGEN (#112) — eigene Gruppe, ZULETZT von allen Bauteilen:
@@ -1325,6 +1359,10 @@ export function legendeHtml(w, opts = {}) {
     + ((w && bodenblechVerzahnung(w).length)
         ? `<span><i class="bpp" style="color:${PARTNERBLECH.farbe}"></i>`
           + `${PARTNERBLECH.label}</span>` : "")
+    // [A-33] Angedeutete Spannachse der Partnerwand — nur, wenn sie im Blatt steht.
+    + ((w && angedeuteteAchsen(w).length)
+        ? `<span><i class="ach" style="color:${ANGEDEUTETE_ACHSE.farbe}"></i>`
+          + `${ANGEDEUTETE_ACHSE.label}</span>` : "")
     // Einlegeblech der Zwischenspannpunkte ([A-14]/#110): genannt nur, wenn die Wand
     // wirklich einen wirksamen Punkt fuehrt, und mit dem Klartext aus sembla-montage.js.
     + ((w && wirksameZwischenpunkte(w).length)
@@ -1397,6 +1435,8 @@ export function blattHtml(w, eingaben = {}, opts = {}) {
     + (einbauteilZeilen(w).length
         ? `<div class="zbox zids"><h4>${EINBAUTEIL_TITEL}</h4>${_tab(einbauteilZeilen(w))}</div>` : "")
     + `<div class="zbox"><h4>Vorspannung</h4>${_tab(vorspannZeilen(w))}</div>`
+    // [A-33] Geteilte Spannpunkte an Verzahnungen: welche Wand die Achse fuehrt — kein Mangel.
+    + (geteiltHtml(w) ? `<div class="zbox"><h4>${GETEILT_TITEL}</h4>${geteiltHtml(w)}</div>` : "")
     // [Z-5]/[Z-6] Zuschnittkonflikte stehen VOR der Legende und nur, wenn es welche gibt:
     // ein unvollstaendiger Zuschnitt darf auf dem Blatt nicht als vollstaendig erscheinen.
     + (maengelHtml(w) ? `<div class="zbox mangel"><h4>${MANGEL_TITEL}</h4>${maengelHtml(w)}</div>` : "")
@@ -1493,6 +1533,10 @@ ${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blatt
      Kreuz — dort liegt ein Blech, nur nicht das dieser Wand. */
   .zlegende i.bpp{height:9px;width:13px;border-radius:0;border:1px dashed currentColor;
                   background:rgba(91,102,115,.35)}
+  /* Angedeutete Spannachse der Partnerwand ([A-33]): senkrechter, gestrichelter, blasser Strich. */
+  .zlegende i.ach{width:0;height:11px;border-radius:0;background:none;
+                  border-left:2px dashed currentColor;opacity:.6;margin:0 5px}
+  .zmangel.geteilt .chip{background:#4a6a8a}
   .ztitleblock{grid-column:1 / span 2;grid-row:2;display:grid;
                grid-template-columns:2.2fr 1.2fr 1.1fr;border:1.5px solid #13202e;
                border-radius:3px;overflow:hidden;font-size:11px}
