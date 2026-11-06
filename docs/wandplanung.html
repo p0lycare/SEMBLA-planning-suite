@@ -798,10 +798,15 @@ function run(){
   // [V-9]/[V-2] Bei manuell gesetzten Spannachsen ist die Steinabdeckung NICHT mehr garantiert:
   // der Rechenkern ergaenzt nichts und meldet jeden nicht durchgangenen Stein. Benannt mit Lage
   // und Rasterlage — kein Baubarkeitsausschluss, nie eine stille Korrektur.
+  // R03: „[V-9]" und „Zurück zu Auto" nur, wenn die Achsen WIRKLICH manuell sind. Im Auto-Pfad
+  // ist die Liste seit [G-11] (06.11.2026, realer Verband) konstruktionsbedingt leer; steht dort
+  // doch etwas, ist das ein Fehler der Auto-Verteilung und wird so benannt — nicht als manuell.
   const ug=vv.ungehaltene_steine||[];
-  if(ug.length) warns.push('⚠ Spannachsen [V-9]: '+ug.length+' Stein(e) von keiner Achse '
-    +'durchgangen [V-2] — z. B. '+ug.slice(0,3).map(x=>'Lage '+(x.lage+1)+' ab Raster '+x.start_grid
-      +' ('+x.typ+')').join(', ')+'. Achse ergänzen oder „Zurück zu Auto".');
+  const ugManuell=achsenManuell(w)>0;
+  if(ug.length) warns.push('⚠ Spannachsen '+(ugManuell?'[V-9]':'(automatisch)')+': '+ug.length
+    +' Stein(e) von keiner Achse durchgangen [V-2] — z. B. '+ug.slice(0,3).map(x=>'Lage '+(x.lage+1)
+      +' ab Raster '+x.start_grid+' ('+x.typ+')').join(', ')
+    +(ugManuell?'. Achse ergänzen oder „Zurück zu Auto".':'. Bitte melden — die automatische Verteilung muss jeden Stein halten.'));
   $('warns').textContent=warns.join('   ');
   renderAchsHinweis(w);
   // [A-33] Geteilte Spannpunkte: frisch aus Geschoss + Partnerwand, nie gespeichert.

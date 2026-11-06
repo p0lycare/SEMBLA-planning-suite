@@ -74,8 +74,11 @@ console.log("\nL-STOSS (Ecke) [A-32]:");
     deckung(alle, 62.5, 62.5) === 1 && deckung(alle, 10, 10) === 1 && deckung(alle, 120, 120) === 1);
   ok("[A-32]/[A-11] die Blechfuge an der Kuerzung liegt unter einem Stein der untersten Lage von A",
     unterStein(A, 1) && !(A.validation.verzahnung_bodenblech || []).some((h) => h.grund === "fuge_an_kuerzung"));
+  // Seit [G-11] (06.11.2026, Achsen aus dem realen Verband) darf A eine Achse im gekuerzten Feld
+  // tragen — das ist der benannte Hinweis achse_auf_partnerblech, den [A-33] im Geschoss aufloest.
+  const warnungen = (w) => (w.validation.verzahnung_bodenblech || []).filter((h) => h.grund !== "achse_auf_partnerblech");
   ok("[A-32] keine Warnung im sauberen L-Stoss",
-    !("verzahnung_bodenblech" in A.validation) && !("verzahnung_bodenblech" in B.validation));
+    !warnungen(A).length && !("verzahnung_bodenblech" in B.validation));
   ok("[A-31] die gekuerzte Wand hat am neuen Blechanfang ein Pflichtauflager, keines in der Kuerzung",
     A.ausgleichspunkte.some((p) => p.x_mm === 125 && p.art === "bereichsende")
     && !A.ausgleichspunkte.some((p) => p.x_mm < 125));

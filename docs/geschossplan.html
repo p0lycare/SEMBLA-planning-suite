@@ -3814,7 +3814,10 @@ function statusSync(erg, koll, verz, els){
         // [A-32] Gleiche Startlage an einer Verzahnung: was das für die Bodenbleche heißt.
         + (k.bodenbleche === 'ueberlagern' ? ', Bodenbleche überlagern sich'
           : k.bodenbleche === 'fehlen' ? ', kein Bodenblech unter der Verzahnung' : '')
-        + ')').join(', ')) + ' — [K-13]</span>');
+        + ')'
+        // R03: Verzahnung geplant, aber die Überlagerung trifft sie nicht — Grund benannt.
+        + (k.verzahnung_passt_nicht ? ' — keine Verzahnung: '
+          + CON.passtNichtText(k.verzahnung_passt_nicht, namenRoh) : '')).join(', ')) + ' — [K-13]</span>');
   }
   // Zulässige Verzahnungen werden BENANNT (#83) — eine Überlagerung darf nicht
   // kommentarlos aus der Kollisionsliste verschwinden. Bewusst OHNE Fehlerfarbe:

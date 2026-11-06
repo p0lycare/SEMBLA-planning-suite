@@ -1338,8 +1338,8 @@ function balancedFill(a, b, maxstep) {
  * und ohne Oeffnung bis zur Oberkante ist das genau die OBERSTE Lage — mit Ausgleichslage
  * ([G-13]) also diese, denn sie ist die oberste gebaute Lage unter dem oberen Anschluss. Mit
  * Staffelung ist es die lokale Oberkante; ein Stein, der an einer Stufe teilweise ueberbaut ist,
- * ist kein Kopfstein. Gelesen wird der VOLLSTAENDIGE Verband ([G-11], vor dem Aussparen der
- * Verzahnungsbereiche). Kopfsteine ueberlappen sich nie (ein Stein unter einem anderen waere
+ * ist kein Kopfstein. Gelesen wird der REALE Verband ([G-11], nach dem Aussparen der
+ * Verzahnungsbereiche); ein Verzahnungsfeld gilt in `occ` als belegt. Kopfsteine ueberlappen sich nie (ein Stein unter einem anderen waere
  * ueberbaut). Ergebnis: Rasterintervalle [a,b), aufsteigend nach a.
  */
 function kopfsteine(courses, occ, L) {
@@ -1357,7 +1357,7 @@ function kopfsteine(courses, occ, L) {
 
 /**
  * [V-11] Stapelwand (Felix Bauroth, 29.10.2026): eine Wand NUR aus i2 (bzw. nur aus i3), deren
- * Steine direkt und OHNE Versatz uebereinander stehen. Geprueft am VOLLSTAENDIGEN Verband: jede
+ * Steine direkt und OHNE Versatz uebereinander stehen. Geprueft am REALEN Verband ([G-11]): jede
  * Rasterzelle wird in allen Lagen von demselben Steinintervall belegt, und alle Steine haben
  * dieselbe Breite. Liefert 2 (i2-Stapel), 3 (i3-Stapel) oder 0 (kein Stapel).
  */
@@ -1639,8 +1639,10 @@ function normSteps(steps, lengthMm, maxHoeheMm) {
 // zweiten Lage die Steine fehlen — Zweck ist das konstruktive Ineinandergreifen rechtwinklig
 // kreuzender Einzelwaende. Die Startparitaet (0 = unterste Lage ausgespart, 1 = erst die zweite
 // Lage ausgespart) ist frei waehlbar und bleibt ueber alle Lagen identisch.
-// [G-11] Die Vorspannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
-// Verzahnungsaussparungen — Vorspannung bleibt also bitgleich.
+// [G-11] (Fassung 06.11.2026) Die Spannachsen werden aus dem REAL gelegten Verband verteilt
+// (nach der Aussparung), damit [V-2] fuer genau die Steine gilt, die gebaut werden. Segmente und
+// Stangenstuecke einer Achse entstehen aus der Rasterbelegung, in der das Verzahnungsfeld als
+// belegt gilt — sie haengen nicht an der Verzahnung.
 
 /**
  * Normalisiert und validiert Verzahnungsbereiche.
@@ -1741,9 +1743,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     for (let k = 0; k < N; k++) { const present = topLage[k] > li; if (present) { if (s === null) s = k; } else if (s !== null) { runs.push([s, k]); s = null; } }
     if (s !== null) runs.push([s, N]); return runs; };
 
-  // ---- Erster Durchgang: VOLLSTAENDIGER Steinverband (Basis fuer occ und Vorspannung) ----
-  // [G-11] Die Spannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
-  // Verzahnungsaussparungen. Dieser erste Durchgang laeuft IMMER — auch bei Verzahnungsbereichen.
+  // ---- Erster Durchgang: VOLLSTAENDIGER Steinverband (Basis fuer occ = Rasterbelegung) ----
+  // Dieser erste Durchgang laeuft IMMER — auch bei Verzahnungsbereichen. Ohne Verzahnung ist er
+  // zugleich der reale Verband, aus dem die Spannachsen verteilt werden ([G-11]).
   const courses = [];
   const rigidLagen = []; const invalidSegments = [];
   const cutsVoll = [];
@@ -1797,32 +1799,27 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       stones, joints_grid: [...joints].sort((a, b) => a - b) });
   }
 
-  // `occ`, `steinIvVoll` und `kopfVoll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
+  // [G-11] `occ` ist die RASTERBELEGUNG der Wandflaeche (Lage x Rasterzelle, ohne Oeffnungen und
+  // ueber Stufen) — gebildet VOR dem Aussparen. Ein Verzahnungsfeld gilt darin als BELEGT: in den
+  // ausgesparten Lagen liegt dort der Stein der Partnerwand, und eine Spannachse im Feld laeuft
+  // durch beide Waende ([A-33]). Aus `occ` entstehen Segmente und Stangenstuecke; sie haengen
+  // damit nicht an der Verzahnung.
   const occ = []; for (let r = 0; r < L; r++) occ.push(new Array(N).fill(false));
-  const steinIvVoll = [];
   for (const c of courses) for (const st of c.stones) {
-    const a = st.x0 / GRID, b = st.x1 / GRID;
-    for (let cc = a; cc < b; cc++) occ[c.lage][cc] = true;
-    steinIvVoll.push([a, b]);
+    for (let cc = st.x0 / GRID; cc < st.x1 / GRID; cc++) occ[c.lage][cc] = true;
   }
-  // [V-3]/[V-11]/[V-12] Die KOPFSTEINE (oberste Lage bzw. lokale Oberkante) tragen die
-  // Grundachsen — VOR dem Aussparen! Aufsteigend sortiert: erster/letzter Kopfstein ([V-11]).
-  const kopfVoll = kopfsteine(courses, occ, L);
-  // [V-11] i2-Stapel (beide Kammern) bzw. i3-Stapel (eine Achse mittig) — am Vollverband.
-  const stapel = stapelBreite(steinIvVoll, N);
 
   // ---- Zweiter Durchgang: Aussparung fuer Verzahnungsbereiche ([G-10]) ----
   // Bei gültigen Verzahnungsbereichen wird das Tiling DETERMINISTISCH NEU GERECHNET: die
   // Bereiche werden wie Luecken aus den runs/cuts herausgeschnitten, bevor `pickTiling` laeuft.
   // So endet kein Stein im Bereich und der verbleibende Verband wird deterministisch neu gelegt.
-  // Stoßfugen und occ bleiben beim vollstaendigen Verband — Vorspannung bleibt bitgleich ([G-11]).
+  // `occ` (Rasterbelegung) bleibt unberuehrt; die Achsverteilung liest danach den REALEN Verband ([G-11]).
   const interlockInvalidSegments = [];
   if (IL.interlocks.length) {
     // [G-5] Der REALE Verband wird LAGENUEBERGREIFEND neu gelegt — auch die nicht ausgesparten
     // Lagen. Sonst blieben sie aus dem Vollverband stehen und ihre Fugen fluchteten mit der
     // darunter neu gelegten, verkuerzten Lage (#143).
-    // [G-11] bleibt unberuehrt: `occ`, `steinIvVoll` und `kopfVoll` stehen oben bereits aus dem
-    // VOLLSTAENDIGEN Verband fest und werden hier nicht mehr angefasst.
+    // [G-11] Die Achsverteilung unten liest diesen REALEN Verband; `occ` steht oben bereits fest.
     const cutsJeLage = [];
     for (let li = 0; li < L; li++) {
       // cuts aus dem vollstaendigen Verband holen (gleicher Weg wie oben)
@@ -1883,6 +1880,20 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     }
   }
 
+  // [G-11] Fassung 06.11.2026 (Miro R03, Felix Bauroth): Die Spannachsen werden aus dem REAL
+  // GELEGTEN Verband verteilt — NACH der Verzahnungsaussparung. Seit [G-5]/#143 legt der Kern mit
+  // Verzahnung einen anderen Verband als ohne; aus dem Vollverband gerechnet blieben Steine des
+  // realen Verbands ohne Achse ([V-2] MUSS verletzt). Ohne Verzahnung ist der reale Verband der
+  // Vollverband — bit-gleich zum Stand davor.
+  const steinIv = [];
+  for (const c of courses) for (const st of c.stones) steinIv.push([st.x0 / GRID, st.x1 / GRID]);
+  // [V-3]/[V-11]/[V-12] Die KOPFSTEINE (oberste Lage bzw. lokale Oberkante) tragen die
+  // Grundachsen. Aufsteigend sortiert: erster/letzter Kopfstein ([V-11]). Ueber einem Stein, der
+  // unter einem Verzahnungsfeld liegt, ist die Zelle belegt (`occ`) — er ist kein Kopfstein.
+  const kopf = kopfsteine(courses, occ, L);
+  // [V-11] i2-Stapel (beide Kammern) bzw. i3-Stapel (eine Achse mittig).
+  const stapel = stapelBreite(steinIv, N);
+
   // [G-5] Fugenversatz benachbarter Lagen — geprueft auf dem REALEN Verband, also NACH der
   // Verzahnungsaussparung. Ohne Verzahnungsbereiche ist das bitgleich zur Pruefung am Vollverband.
   let versatzOk = true; const viol = [];
@@ -1937,9 +1948,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // ist und [V-4] mindestens 2 Raster erlaubt. Das verletzt weder [V-2] (jeder Stein, der die Mitte
   // enthaelt, enthaelt auch Feld 1 oder Feld 3 — kein Stein ist schmaler als 2 Raster) noch [V-4]
   // (der Abstand Feld 1 -> Feld 3 ist 2, die Abstaende nach aussen werden nur kleiner).
-  // [G-11] Steinabdeckung basiert auf dem VOLLSTAENDIGEN Verband (steinIvVoll, vor dem Aussparen).
+  // [G-11] Steinabdeckung am REALEN Verband (steinIv, nach dem Aussparen).
   // Deterministische Reihenfolge fuer den Stabbing-Greedy: nach rechtem, dann linkem Rand.
-  steinIvVoll.sort((p, q) => (p[1] - q[1]) || (p[0] - q[0]));
+  steinIv.sort((p, q) => (p[1] - q[1]) || (p[0] - q[0]));
   /** Wird das Rasterintervall [a,b) von mindestens einer Achse aus `S` durchgangen? */
   const gehalten = (S, a, b) => { for (let k = a; k < b; k++) if (S.has(k)) return true; return false; };
 
@@ -1950,14 +1961,14 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     // Verletzungen der Muss-Regel [V-2] werden unten sichtbar gemeldet.
     colArr = PS.columns_grid.filter(k => k >= 0 && k < N).sort((a, b) => a - b);
   } else {
-    // [V-3]/[V-11] Grundachsen: allein aus den Kopfsteinen (vollstaendiger Verband, [G-11]).
+    // [V-3]/[V-11] Grundachsen: allein aus den Kopfsteinen (realer Verband, [G-11]).
     // Mitte jedes i3; bei einem i2 am Wandanfang die 2. Rasterachse, bei einem i2 am Wandende
     // die 2. Rasterachse von rechts; im i2-Stapel beide Kammern.
     //
     // [V-5] ist abgeloest: `PS.start_axis_grid` wird hier NICHT gelesen. Das Feld bleibt im
     // Datenmodell erhalten (normPrestress fuehrt es unveraendert weiter), damit gespeicherte
     // Projekte lesbar bleiben — es ist unwirksamer Altbestand.
-    const colSet = grundachsen(kopfVoll, N, stapel);
+    const colSet = grundachsen(kopf, N, stapel);
     // Zusatzachsen [V-7]/[V-8] sind GESCHUETZT: [V-12] entfernt nie eine von ihnen.
     const schutz = new Set();
     // [V-8] Oeffnungen: beidseitig eine Achse (die Steine daneben tragen den Sturz ab).
@@ -1967,14 +1978,14 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     for (const k of schutz) colSet.add(k);
     // [V-12] Zelle -> Anfang des i3-Kopfsteins, der sie enthaelt (-1: kein i3-Kopfstein).
     const kopfI3 = new Array(N).fill(-1);
-    for (const [a, b] of kopfVoll) if (b - a === 3) for (let k = a; k < b; k++) kopfI3[k] = a;
+    for (const [a, b] of kopf) if (b - a === 3) for (let k = a; k < b; k++) kopfI3[k] = a;
     // [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
     // Stabbing-Greedy ueber alle Steine. Gesetzt wird die RECHTESTE Zelle des Steins, die in
     // KEINEM i3-Kopfstein liegt (sie laesst die i3 der obersten Lage mittig, [V-12] „bevorzugt
     // in der Mitte"). Liegen alle Zellen in i3-Kopfsteinen, wird der Kopfstein, der dem WANDENDE
     // am naechsten liegt (Gleichstand: der linke), in Feld 1 UND Feld 3 gespannt — KKI 2 „im
     // ersten i3 doppelt in Feld 1 und Feld 3". Rein additiv; die Mitte raeumt erst [V-12] ab.
-    for (const [a, b] of steinIvVoll) {
+    for (const [a, b] of steinIv) {
       if (gehalten(colSet, a, b)) continue;
       let frei = -1;
       for (let k = b - 1; k >= a; k--) if (kopfI3[k] < 0) { frei = k; break; }
@@ -1997,7 +2008,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     // er eine Achse in Feld 1 oder Feld 3, wird die Gegenseite ergaenzt und die Mitte entfernt,
     // sofern sie nicht geschuetzt ist und [V-4] mindestens 2 Raster erlaubt (sonst bleiben alle
     // drei Felder belegt — auch das ist symmetrisch).
-    for (const [a, b] of kopfVoll) {
+    for (const [a, b] of kopf) {
       if (b - a !== 3) continue;
       if (!fin.has(a) && !fin.has(a + 2)) continue;
       fin.add(a); fin.add(a + 2);

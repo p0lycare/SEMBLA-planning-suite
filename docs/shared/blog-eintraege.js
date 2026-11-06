@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261106-01",
+    datum: "2026-11-06",
+    typ: "fix",
+    issue: 138,
+    titel: "Verzahnung: Spannachsen halten jeden gelegten Stein; der Geschossplan nennt, warum eine Ecke nicht verzahnt",
+    testbitte: "Wand mit Verzahnung in Modul 1 neu auslegen: kein Stein ohne Spannachse, keine „[V-9]“-Warnung; "
+      + "im Geschossplan eine Ecke mit verschobenem Wandende zeigt, warum sie keine Verzahnung ist",
+  },
+  {
     id: "chg-20261105-01",
     datum: "2026-11-05",
     typ: "feature",

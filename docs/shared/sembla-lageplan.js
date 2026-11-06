@@ -64,6 +64,8 @@ import {
   ursprungPunkt,
   // [A-33] Geteilter Spannpunkt an der Verzahnung — dieselbe Zuordnung wie in den Wandausgaben.
   geteilteSpannpunkte,
+  // R03: benannter Grund, warum eine geplante Verzahnung die Ueberlagerung nicht trifft.
+  passtNichtText,
 } from "./sembla-constraints.js";
 import { massKontext, massGeometrie, massTextLayout, massAnker, massPfad } from "./sembla-massbild.js";
 import { findeGeschoss, kopfdaten as mappeKopfdaten, laengenAbgleich } from "./sembla-projektmappe.js";
@@ -546,7 +548,9 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
         ? " Gleiche Startlage beider Verzahnungsbereiche — Bodenbleche überlagern sich ([A-32])."
         : k.bodenbleche === "fehlen"
           ? " Gleiche Startlage beider Verzahnungsbereiche — unter der Verzahnung liegt kein Bodenblech ([A-32])."
-          : "") });
+          : "")
+      // R03: Verzahnung geplant, aber nicht getroffen — der Grund steht mit auf dem Blatt.
+      + (k.verzahnung_passt_nicht ? " Keine Verzahnung: " + passtNichtText(k.verzahnung_passt_nicht, name) : "") });
   }
   // Zulaessige Wandverzahnungen (#83): DIESELBE Rechnung, die den Paaren oben ihre
   // Kollisionsmeldung entzogen hat — `pruefeGeschoss` trennt beide Aussagen in einem

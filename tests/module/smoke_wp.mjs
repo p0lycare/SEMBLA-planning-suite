@@ -4044,9 +4044,15 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   const mitIl=wil;
   ok('[#82] Steinmenge mit Verzahnung geringer',
     (mitIl.bom.i3+mitIl.bom.i2)<(ohneIl.bom.i3+ohneIl.bom.i2));
-  // Pruefe, dass Vorspannung/Strangabstand identisch sind (keine Aenderung an Segmenten)
-  ok('[#82] Vorspannung bleibt unveraendert (Achsen identisch)',
-    JSON.stringify(mitIl.tension_columns.map(c=>c.k))===JSON.stringify(ohneIl.tension_columns.map(c=>c.k)));
+  // [G-11] (Fassung 06.11.2026, Miro R03): die Achsen folgen dem REAL gelegten Verband — jeder
+  // gebaute Stein ist gehalten, im Auto-Modus ohne [V-9]-Warnung; die Segmente einer Achse
+  // haengen weiter nicht an der Verzahnung.
+  ok('[G-11] Verzahnung: Auto-Achsen halten jeden realen Stein',
+    mitIl.validation.ungehaltene_steine.length===0 && !/Spannachsen \[V-9\]/.test(document.getElementById('warns').textContent));
+  const segIl=w=>Object.fromEntries(w.tension_columns.map(c=>[c.k,JSON.stringify(c.segments.map(s=>[s.z0_mm,s.z1_mm]))]));
+  const sm=segIl(mitIl), so=segIl(ohneIl);
+  ok('[G-11] Verzahnung: Segmente je Achse unveraendert',
+    Object.keys(sm).every(k=>!(k in so)||sm[k]===so[k]));
   // Roundtrip: Wandelement mit Verzahnung laden
   WP.applyWand(wil);
   ok('[#82] Roundtrip: Verzahnung bleibt nach applyWand erhalten',

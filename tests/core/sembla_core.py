@@ -1155,7 +1155,8 @@ def _kopfsteine(courses, occ, L: int) -> list[tuple[int, int]]:
     Kopfstein ist jeder Stein, ueber dessen Rasterzellen KEIN weiterer Stein liegt. Ohne Staffelung
     und ohne Oeffnung bis zur Oberkante ist das genau die OBERSTE Lage — mit Ausgleichslage
     ([G-13]) also diese. Mit Staffelung ist es die lokale Oberkante; ein an einer Stufe teilweise
-    ueberbauter Stein ist kein Kopfstein. Gelesen wird der VOLLSTAENDIGE Verband ([G-11]).
+    ueberbauter Stein ist kein Kopfstein. Gelesen wird der REALE Verband ([G-11]); ein
+    Verzahnungsfeld gilt in `occ` als belegt.
     Ergebnis: Rasterintervalle [a,b), aufsteigend nach a.
     """
     out = []
@@ -1454,8 +1455,10 @@ def _norm_steps(steps, length_mm, max_hoehe_mm):
 # Ein Verzahnungsbereich ist ein Laengsabschnitt [g0, g1) der Wand, in dem alternierend in jeder
 # zweiten Lage die Steine fehlen. Die Startparitaet (0 = unterste Lage ausgespart, 1 = erst die
 # zweite Lage ausgespart) ist frei waehlbar.
-# [G-11] Die Vorspannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
-# Verzahnungsaussparungen — Vorspannung bleibt also bitgleich.
+# [G-11] (Fassung 06.11.2026) Die Spannachsen werden aus dem REAL gelegten Verband verteilt
+# (nach der Aussparung), damit [V-2] fuer genau die Steine gilt, die gebaut werden. Segmente und
+# Stangenstuecke einer Achse entstehen aus der Rasterbelegung, in der das Verzahnungsfeld als
+# belegt gilt — sie haengen nicht an der Verzahnung.
 
 def norm_interlocks(arr, N, openings=None):
     """Normalisiert und validiert Verzahnungsbereiche.
@@ -1581,9 +1584,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         if start is not None: runs.append((start, N))
         return runs
 
-    # ---- Erster Durchgang: VOLLSTAENDIGER Steinverband (Basis fuer occ und Vorspannung) ----
-    # [G-11] Die Spannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
-    # Verzahnungsaussparungen. Dieser erste Durchgang laeuft IMMER — auch bei Verzahnungsbereichen.
+    # ---- Erster Durchgang: VOLLSTAENDIGER Steinverband (Basis fuer occ = Rasterbelegung) ----
+    # Dieser erste Durchgang laeuft IMMER — auch bei Verzahnungsbereichen. Ohne Verzahnung ist er
+    # zugleich der reale Verband, aus dem die Spannachsen verteilt werden ([G-11]).
     courses, rigid_lagen, invalid_segments = [], [], []
     cuts_voll = []
     for li in range(L):
@@ -1633,33 +1636,27 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         _c["joints_grid"] = sorted(joints)
         courses.append(_c)
 
-    # `occ`, `stein_iv_voll` und `kopf_voll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
+    # [G-11] `occ` ist die RASTERBELEGUNG der Wandflaeche — gebildet VOR dem Aussparen. Ein
+    # Verzahnungsfeld gilt darin als BELEGT (dort liegt in den ausgesparten Lagen der Stein der
+    # Partnerwand; eine Achse im Feld laeuft durch beide Waende, [A-33]). Aus `occ` entstehen
+    # Segmente und Stangenstuecke; sie haengen damit nicht an der Verzahnung.
     occ = [[False] * N for _ in range(L)]
-    stein_iv_voll = []
     for c in courses:
         for st in c["stones"]:
-            a, b = st["x0"] // GRID, st["x1"] // GRID
-            for cc in range(a, b):
+            for cc in range(st["x0"] // GRID, st["x1"] // GRID):
                 occ[c["lage"]][cc] = True
-            stein_iv_voll.append((a, b))
-    # [V-3]/[V-11]/[V-12] Die KOPFSTEINE (oberste Lage bzw. lokale Oberkante) tragen die
-    # Grundachsen — VOR dem Aussparen! Aufsteigend sortiert: erster/letzter Kopfstein ([V-11]).
-    kopf_voll = _kopfsteine(courses, occ, L)
-    # [V-11] i2-Stapel (beide Kammern) bzw. i3-Stapel (eine Achse mittig) — am Vollverband.
-    stapel = _stapel_breite(stein_iv_voll, N)
 
     # ---- Zweiter Durchgang: Aussparung fuer Verzahnungsbereiche ([G-10]) ----
     # Bei gueltigen Verzahnungsbereichen wird das Tiling DETERMINISTISCH NEU GERECHNET: die
     # Bereiche werden wie Luecken aus den runs/cuts herausgeschnitten, bevor `_pick_tiling` laeuft.
     # So endet kein Stein im Bereich und der verbleibende Verband wird deterministisch neu gelegt.
-    # Stossfugen und occ bleiben beim vollstaendigen Verband — Vorspannung bleibt bitgleich ([G-11]).
+    # `occ` (Rasterbelegung) bleibt unberuehrt; die Achsverteilung liest danach den REALEN Verband ([G-11]).
     interlock_invalid_segments = []
     if _IL_interlocks:
         # [G-5] Der REALE Verband wird LAGENUEBERGREIFEND neu gelegt — auch die nicht ausgesparten
         # Lagen. Sonst blieben sie aus dem Vollverband stehen und ihre Fugen fluchteten mit der
         # darunter neu gelegten, verkuerzten Lage (#143).
-        # [G-11] bleibt unberuehrt: occ/stein_iv_voll/kopf_voll stehen oben bereits aus dem
-        # VOLLSTAENDIGEN Verband fest und werden hier nicht mehr angefasst.
+        # [G-11] Die Achsverteilung unten liest diesen REALEN Verband; `occ` steht oben bereits fest.
         cuts_je_lage = []
         for li in range(L):
             # cuts aus dem vollstaendigen Verband holen (gleicher Weg wie oben)
@@ -1708,6 +1705,15 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             # [G-5] Die Fugen der Lage sind die REALEN Steinberuehrungen des ausgesparten
             # Verbands — Aussen- und Lueckenkanten zaehlen nicht.
             courses[li]["joints_grid"] = sorted(joints)
+
+    # [G-11] Fassung 06.11.2026 (Miro R03): die Spannachsen werden aus dem REAL GELEGTEN Verband
+    # verteilt — NACH der Verzahnungsaussparung (s. Betriebskopie). Ohne Verzahnung bit-gleich.
+    stein_iv = [(st["x0"] // GRID, st["x1"] // GRID) for c in courses for st in c["stones"]]
+    # [V-3]/[V-11]/[V-12] Die KOPFSTEINE tragen die Grundachsen; ueber einem Stein unter einem
+    # Verzahnungsfeld ist die Zelle belegt (`occ`) — er ist kein Kopfstein.
+    kopf = _kopfsteine(courses, occ, L)
+    # [V-11] i2-Stapel (beide Kammern) bzw. i3-Stapel (eine Achse mittig).
+    stapel = _stapel_breite(stein_iv, N)
 
     # [G-5] Fugenversatz benachbarter Lagen — geprueft auf dem REALEN Verband, also NACH der
     # Verzahnungsaussparung. Ohne Verzahnungsbereiche bitgleich zur Pruefung am Vollverband.
@@ -1760,9 +1766,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # [V-12] (SA 2/KKI 2) haelt jeden i3-Kopfstein SYMMETRISCH: nur mittig (Feld 2) oder Feld 1
     # UND Feld 3. Die Mitte wird nur entfernt, wenn sie keine Zusatzachse [V-7]/[V-8] ist und [V-4]
     # mindestens 2 Raster erlaubt — ohne Verletzung von [V-2] oder [V-4] (s. Betriebskopie).
-    # [G-11] Steinabdeckung basiert auf dem VOLLSTAENDIGEN Verband (stein_iv_voll, vor dem Aussparen).
+    # [G-11] Steinabdeckung am REALEN Verband (stein_iv, nach dem Aussparen).
     # Deterministische Reihenfolge fuer den Stabbing-Greedy: nach rechtem, dann linkem Rand.
-    stein_iv_voll.sort(key=lambda p: (p[1], p[0]))
+    stein_iv.sort(key=lambda p: (p[1], p[0]))
 
     def _gehalten(S, a, b):
         """Wird das Rasterintervall [a,b) von mindestens einer Achse aus S durchgangen?"""
@@ -1774,9 +1780,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         # Verletzungen der Muss-Regel [V-2] werden unten sichtbar gemeldet.
         col_ks = sorted(k for k in _PS["columns_grid"] if 0 <= k < N)
     else:
-        # [V-3]/[V-11] Grundachsen: allein aus den Kopfsteinen (vollstaendiger Verband, [G-11]).
+        # [V-3]/[V-11] Grundachsen: allein aus den Kopfsteinen (realer Verband, [G-11]).
         # [V-5] ist abgeloest: `_PS["start_axis_grid"]` wird hier NICHT gelesen (Altbestand).
-        colset = _grundachsen(kopf_voll, N, stapel)
+        colset = _grundachsen(kopf, N, stapel)
         # Zusatzachsen [V-7]/[V-8] sind GESCHUETZT: [V-12] entfernt nie eine von ihnen.
         schutz: set[int] = set()
         # [V-8] Oeffnungen: beidseitig eine Achse (die Steine daneben tragen den Sturz ab).
@@ -1790,7 +1796,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         colset |= schutz
         # [V-12] Zelle -> Anfang des i3-Kopfsteins, der sie enthaelt (-1: kein i3-Kopfstein).
         kopf_i3 = [-1] * N
-        for a, b in kopf_voll:
+        for a, b in kopf:
             if b - a == 3:
                 for k in range(a, b):
                     kopf_i3[k] = a
@@ -1798,7 +1804,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         # Gesetzt wird die RECHTESTE Zelle des Steins, die in KEINEM i3-Kopfstein liegt; liegen
         # alle Zellen in i3-Kopfsteinen, wird der dem WANDENDE naechste (Gleichstand: der linke)
         # in Feld 1 UND Feld 3 gespannt (KKI 2). Rein additiv; die Mitte raeumt erst [V-12] ab.
-        for a, b in stein_iv_voll:
+        for a, b in stein_iv:
             if _gehalten(colset, a, b):
                 continue
             frei = next((k for k in range(b - 1, a - 1, -1) if kopf_i3[k] < 0), -1)
@@ -1821,7 +1827,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                 for c in _balanced_fill(roh[i], roh[i + 1], _maxspan):
                     fin.add(c)
         # [V-12] MUSS: jeder i3-Kopfstein symmetrisch — nur mittig, oder Feld 1 UND Feld 3.
-        for a, b in kopf_voll:
+        for a, b in kopf:
             if b - a != 3:
                 continue
             if a not in fin and (a + 2) not in fin:

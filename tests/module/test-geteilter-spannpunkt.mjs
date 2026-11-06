@@ -23,6 +23,14 @@ const ok = (n, c) => { if (c) { pass++; console.log("  ok  " + n); } else { fail
 const H = 2400;
 const V = (g0, g1, p) => [{ g0, g1, start_parity: p }];
 const lage = (x, y, richtung, laenge_grid) => ({ start_mm: { x, y }, richtung, laenge_grid });
+/**
+ * Die [A-33]-Faelle unten brauchen eine BESTIMMTE Achslage im Verzahnungsfeld (doppelt, nur die
+ * Partnerwand, nur die blechstellende Wand …). Seit [G-11] (06.11.2026) verteilt die Automatik die
+ * Achsen aus dem realen Verband, und diese Lagen entstehen nicht mehr von selbst. Hergestellt werden
+ * sie darum mit manuell gesetzten Achsen ([V-9]) — genau die des Vollverbands, wie sie vorher
+ * automatisch kamen. [A-33] ordnet jede vorhandene Achse zu, gleich woher sie stammt.
+ */
+const manuell = (l) => ({ columns_grid: buildWall("v", l, H, [], null, null, []).tension_columns.map((c) => c.k) });
 
 /** Ein Geschoss mit den gegebenen Waenden; liefert Mappe + Speicherattrappe. */
 function geschoss(waende) {
@@ -54,8 +62,9 @@ console.log("\nL-STOSS: beide Waende haben eine Achse im Eckfeld (heute doppelt 
 {
   // A laeuft in x und belegt an der Ecke die unterste Lage (start_parity 1) -> Bodenblech gekuerzt.
   // B laeuft in y und spart sie aus (start_parity 0) -> B stellt das Blech an der Ecke.
-  const A = buildWall("A", 1250, H, [], null, null, [], V(0, 1, 1));
-  const B = buildWall("B", 2000, H, [], null, null, [], V(0, 1, 0));
+  // Ausgangslage „beide haben eine Achse im Eckfeld" ueber `manuell` ([V-9], s. o.).
+  const A = buildWall("A", 1250, H, [], null, manuell(1250), [], V(0, 1, 1));
+  const B = buildWall("B", 2000, H, [], null, manuell(2000), [], V(0, 1, 0));
   ok("Ausgangslage: A UND B rechnen je eine Achse im Eckfeld (k=0) — Doppelzaehlung ohne [A-33]",
     achsenAn(A, 0) === 1 && achsenAn(B, 0) === 1
     && A.validation.verzahnung_bodenblech.some((h) => h.grund === "achse_auf_partnerblech" && h.k === 0));
@@ -118,8 +127,8 @@ console.log("\nL-STOSS: beide Waende haben eine Achse im Eckfeld (heute doppelt 
 // ---------------------------------------------------------------------------------------------
 console.log("\nL-STOSS: nur die blechstellende Wand hat die Eckachse [A-33]:");
 {
-  const A = buildWall("A", 2500, H, [], null, null, [], V(0, 1, 1));   // Achsen 1,4,…
-  const B = buildWall("B", 2000, H, [], null, null, [], V(0, 1, 0));   // Achse 0
+  const A = buildWall("A", 2500, H, [], null, manuell(2500), [], V(0, 1, 1));   // Achsen 1,4,…
+  const B = buildWall("B", 2000, H, [], null, manuell(2000), [], V(0, 1, 0));   // Achse 0
   const G = geschoss([{ id: "A", we: A, lage: lage(0, 62.5, "x", 20) },
                       { id: "B", we: B, lage: lage(62.5, 0, "y", 16) }]);
   const sA = geteiltAusSpeicher(G.store, "A", A), sB = geteiltAusSpeicher(G.store, "B", B);
@@ -134,8 +143,8 @@ console.log("\nL-STOSS: nur die blechstellende Wand hat die Eckachse [A-33]:");
 // ---------------------------------------------------------------------------------------------
 console.log("\nL-STOSS: nur die gekuerzte Wand hat die Eckachse -> B uebernimmt sie [A-33]:");
 {
-  const A = buildWall("A", 1250, H, [], null, null, [], V(0, 1, 1));   // Achse 0
-  const B = buildWall("B", 1000, H, [], null, null, [], V(0, 1, 0));   // Achsen 1,4,6 — keine bei 0
+  const A = buildWall("A", 1250, H, [], null, manuell(1250), [], V(0, 1, 1));   // Achse 0
+  const B = buildWall("B", 1000, H, [], null, manuell(1000), [], V(0, 1, 0));   // Achsen 1,4,6 — keine bei 0
   const G = geschoss([{ id: "A", we: A, lage: lage(0, 62.5, "x", 10) },
                       { id: "B", we: B, lage: lage(62.5, 0, "y", 8) }]);
   const sA = geteiltAusSpeicher(G.store, "A", A), sB = geteiltAusSpeicher(G.store, "B", B);
@@ -150,8 +159,8 @@ console.log("\nL-STOSS: nur die gekuerzte Wand hat die Eckachse -> B uebernimmt 
 // ---------------------------------------------------------------------------------------------
 console.log("\nT-STOSS: durchlaufende Wand stellt das Blech und hat die Achse [A-33]:");
 {
-  const A = buildWall("A", 4000, H, [], null, null, [], V(13, 14, 0));   // Achse 13
-  const B = buildWall("B", 2000, H, [], null, null, [], V(15, 16, 1));   // gekuerzt am Ende
+  const A = buildWall("A", 4000, H, [], null, manuell(4000), [], V(13, 14, 0));   // Achse 13
+  const B = buildWall("B", 2000, H, [], null, manuell(2000), [], V(15, 16, 1));   // gekuerzt am Ende
   const G = geschoss([{ id: "A", we: A, lage: lage(0, 62.5, "x", 32) },
                       { id: "B", we: B, lage: lage(1687.5, -1875, "y", 16) }]);
   const sA = geteiltAusSpeicher(G.store, "A", A), sB = geteiltAusSpeicher(G.store, "B", B);
@@ -179,8 +188,8 @@ console.log("\nT-STOSS: durchlaufende Wand stellt das Blech und hat die Achse [A
 console.log("\nT-STOSS unsauber und Lageplan-Warnungen [A-32]/[A-33]:");
 {
   // Die durchlaufende Wand belegt die unterste Lage -> beide behalten ihr Blech -> Zuordnung offen.
-  const A = buildWall("A", 4000, H, [], null, null, [], V(13, 14, 1));
-  const B = buildWall("B", 2000, H, [], null, null, [], V(15, 16, 0));
+  const A = buildWall("A", 4000, H, [], null, manuell(4000), [], V(13, 14, 1));
+  const B = buildWall("B", 2000, H, [], null, manuell(2000), [], V(15, 16, 0));
   const G = geschoss([{ id: "A", we: A, lage: lage(0, 62.5, "x", 32) },
                       { id: "B", we: B, lage: lage(1687.5, -1875, "y", 16) }]);
   const sA = geteiltAusSpeicher(G.store, "A", A), sB = geteiltAusSpeicher(G.store, "B", B);
@@ -196,8 +205,8 @@ console.log("\nT-STOSS unsauber und Lageplan-Warnungen [A-32]/[A-33]:");
   ok("[A-32]/[A-33] Lageplanblatt (Vorschau = Druck = Export) traegt beide Aussagen",
     /Bodenbleche überlagern sich/.test(html) && /Geteilter Spannpunkt/.test(html));
   // Gleiche Startlage (beide sparen die unterste Lage aus): Kollision mit Bodenblech-Zusatz.
-  const A0 = buildWall("A", 4000, H, [], null, null, [], V(13, 14, 0));
-  const B0 = buildWall("B", 2000, H, [], null, null, [], V(15, 16, 0));
+  const A0 = buildWall("A", 4000, H, [], null, manuell(4000), [], V(13, 14, 0));
+  const B0 = buildWall("B", 2000, H, [], null, manuell(2000), [], V(15, 16, 0));
   const G2 = geschoss([{ id: "A", we: A0, lage: lage(0, 62.5, "x", 32) },
                        { id: "B", we: B0, lage: lage(1687.5, -1875, "y", 16) }]);
   const d2 = lageplanDaten({ mappe: G2.mappe, geschossId: G2.geschossId, elemente: [...G2.el.values()] });
@@ -209,7 +218,7 @@ console.log("\nT-STOSS unsauber und Lageplan-Warnungen [A-32]/[A-33]:");
 // ---------------------------------------------------------------------------------------------
 console.log("\nOHNE PARTNER und BESTAND [A-33]:");
 {
-  const A = buildWall("A", 1250, H, [], null, null, [], V(0, 1, 1));
+  const A = buildWall("A", 1250, H, [], null, manuell(1250), [], V(0, 1, 1));
   // Nicht verortet: neutraler Hinweis, Achse bleibt (vorlaeufig) in der Wand.
   const sA = mitGeteiltenSpannpunkten(A, spannpunktStellen(null, "A", () => null, A));
   ok("[A-33] ohne verortete Partnerwand: neutraler Hinweis, Achse bleibt gefuehrt",
@@ -223,6 +232,66 @@ console.log("\nOHNE PARTNER und BESTAND [A-33]:");
     geteiltAusSpeicher(G.store, "O", O) === O);
   ok("wandBezeichnung: fester Wandname steht fuer sich, freier Name in Anfuehrung",
     wandBezeichnung("Wand_EG-3") === "Wand_EG-3" && wandBezeichnung("Ecke") === "Wand „Ecke“");
+}
+
+// ---------------------------------------------------------------------------------------------
+// R03 (Feedback Felix Bauroth 06.11.2026), synthetisch nachgebaut: L-Stoss aus Wand A (2125 mm,
+// Verzahnung am Wandende, start_parity 0) und Wand B (1250 mm, start_parity 1), beide 2600 hoch.
+// Seit [G-11] (06.11.2026) folgen die Achsen dem realen Verband — kein ungehaltener Stein.
+console.log("\nR03: L-Stoss A/B in beiden Orientierungen von B ([K-13.1]/[A-32]/[A-33]/[G-11]):");
+{
+  const ps = { max_span_grid: 3, rod_lengths_mm: [1050, 820], rod_rest_mm: 100 };
+  const HR = 2600;
+  const A = buildWall("A", 2125, HR, [], null, ps, [], V(16, 17, 0));
+  // Variante 1: B oberhalb von A, Eckfeld am Max-Ende von B (Rasterfeld 9, y nach unten).
+  // Variante 2: B unterhalb von A, Eckfeld am Min-Ende von B (Rasterfeld 0).
+  const varianten = [
+    ["B oberhalb, Ecke an B-Feld 9", buildWall("B", 1250, HR, [], null, ps, [], V(9, 10, 1)), lage(2062.5, -1125, "y", 10), 9],
+    ["B unterhalb, Ecke an B-Feld 0", buildWall("B", 1250, HR, [], null, ps, [], V(0, 1, 1)), lage(2062.5, 0, "y", 10), 0],
+  ];
+  ok("[G-11] R03: A traegt keinen ungehaltenen Stein", A.validation.ungehaltene_steine.length === 0);
+  for (const [was, B, lageB, feldB] of varianten) {
+    ok(`[G-11] R03 ${was}: B traegt keinen ungehaltenen Stein`, B.validation.ungehaltene_steine.length === 0);
+    const G = geschoss([{ id: "A", we: A, lage: lage(0, 62.5, "x", 17) }, { id: "B", we: B, lage: lageB }]);
+    const waende = [...MAPPE.findeGeschoss(G.mappe, G.geschossId).geschoss.waende];
+    const erg = K.pruefeGeschoss(waende, [], null, { A: A.interlocks, B: B.interlocks });
+    ok(`[K-13.1] R03 ${was}: keine Kollision, eine zulaessige Verzahnung (A-Feld 16, B-Feld ${feldB})`,
+      erg.kollisionen.length === 0 && erg.verzahnungen.length === 1
+      && erg.verzahnungen[0].raster.a === 16 && erg.verzahnungen[0].raster.b === feldB
+      && erg.verzahnungen[0].blech_von === "A");
+    const sA = geteiltAusSpeicher(G.store, "A", A), sB = geteiltAusSpeicher(G.store, "B", B);
+    ok(`[A-33] R03 ${was}: Hinweis „Geteilter Spannpunkt" an beiden Waenden, A fuehrt`,
+      (sA.geteilte_spannpunkte || []).length === 1 && (sB.geteilte_spannpunkte || []).length === 1
+      && spannpunktHinweis(sA.geteilte_spannpunkte[0]).startsWith(`Geteilter Spannpunkt mit ${G.namen.get("B")}`)
+      && spannpunktHinweis(sB.geteilte_spannpunkte[0]).startsWith(`Geteilter Spannpunkt mit ${G.namen.get("A")}`)
+      && achsenAn(sA, 16) === 1);
+    // Gleiche Startlage bleibt Kollision und nennt die Bodenblech-Ueberlagerung.
+    const B0 = buildWall("B", 1250, HR, [], null, ps, [], V(feldB, feldB + 1, 0));
+    const k0 = K.pruefeGeschoss(waende, [], null, { A: A.interlocks, B: B0.interlocks }).kollisionen;
+    ok(`[A-32] R03 ${was}: gleiche Startlage bleibt Kollision mit „Bodenbleche überlagern sich"`,
+      k0.length === 1 && k0[0].bodenbleche === "ueberlagern" && /Bodenbleche überlagern sich/.test(k0[0].meldung));
+  }
+  // Benannte Gruende, wenn die Verzahnung die Ueberlagerung nicht trifft — die Bewertung bleibt
+  // exakt (keine Toleranz), nur die Meldung sagt jetzt WARUM.
+  const B9 = buildWall("B", 1250, HR, [], null, ps, [], V(9, 10, 1));
+  const tab = { A: A.interlocks, B: B9.interlocks };
+  const am = (lageB) => K.pruefeGeschoss([{ id: "A", lage: lage(0, 62.5, "x", 17) }, { id: "B", lage: lageB }],
+    [], null, tab).kollisionen;
+  const k1 = am(lage(2062.5, 0, "y", 10));
+  ok("R03: Verzahnung am anderen Wandende wird benannt (kein_bereich, anderes_ende)",
+    k1.length === 1 && k1[0].verzahnung_passt_nicht.length === 1
+    && k1[0].verzahnung_passt_nicht[0].wand === "B" && k1[0].verzahnung_passt_nicht[0].grund === "kein_bereich"
+    && k1[0].verzahnung_passt_nicht[0].anderes_ende === true && /am anderen Wandende/.test(k1[0].meldung));
+  const k2 = am(lage(2062.5, -1095, "y", 10));
+  ok("R03: B ragt 30 mm ueber die Aussenkante von A — benannt (ausser_raster, 30 mm), weiterhin Kollision",
+    k2.length === 1 && k2[0].ueberlappung_mm.x === 125 && k2[0].ueberlappung_mm.y === 125
+    && k2[0].verzahnung_passt_nicht[0].grund === "ausser_raster" && k2[0].verzahnung_passt_nicht[0].versatz_mm === 30
+    && /30 mm neben Rasterfeld 9/.test(k2[0].meldung));
+  const k3 = K.pruefeGeschoss([{ id: "A", lage: lage(0, 62.5, "x", 17) }, { id: "B", lage: lage(2062.5, 0, "y", 10) }],
+    [], null, {}).kollisionen;
+  ok("R03: ohne Verzahnungsbereiche bleibt die Kollisionsmeldung bit-genau wie zuvor",
+    k3.length === 1 && !("verzahnung_passt_nicht" in k3[0])
+    && k3[0].meldung === "Wände „A“ und „B“ überlappen sich um 125 × 125 mm — [K-13].");
 }
 
 console.log(`\n${pass}/${pass + fail} ok`);

@@ -195,10 +195,14 @@ anderen Verzahnungsbereich oder mit ungültiger Startparität steht in
 `validation.interlock_fehler` — **kein** Baubarkeitsausschluss, aber eine sichtbare Warnung. Der
 Import/Export-Pfad (`projektObjekt`/`parseImport`/`dupliziere`) reicht das **ganze Wandelement**
 unverändert weiter ⇒ der Roundtrip über Einzelwanddatei, Projektarchiv und Duplizieren ist
-verlustfrei. **Auf Spannachsenverteilung, Segmentbildung und Gewindestangen-Stückliste haben die
-Bereiche keinen Einfluss ([G-11])** — Spannachsen werden aus dem vollständigen Steinverband ohne
-Verzahnungsaussparungen berechnet. Der Verzahnungsbereich ändert aber die **Steinmengen** (weniger
-Steine in den ausgesparten Lagen) und die **Stoßfugenzahl**.
+verlustfrei. **Die Spannachsen folgen dem real gelegten Verband ([G-11], Fassung 06.11.2026, Miro
+R03):** Kopfsteine, Stapel und Steinabdeckung [V-2] werden **nach** dem Aussparen (und dem
+lagenübergreifenden Neulegen nach [G-5]/#143) gelesen — aus dem Vollverband gerechnet blieben Steine
+des realen Verbands ohne Achse. **Segmente und Stangenstücke** einer Achse hängen dagegen nicht an der
+Verzahnung: `occ` (Rasterbelegung) zählt das Verzahnungsfeld als belegt, eine Achse im Feld läuft
+durch beide Wände ([A-33]). Der Bereich ändert also **Steinmengen**, **Stoßfugenzahl** und — wo der
+reale Verband es verlangt — **Lage/Zahl der Achsen**; Wände ohne Verzahnung bit-gleich. Die
+[V-9]-Warnung in Modul 1 heißt nur noch so, wenn `columns_grid` wirklich gesetzt ist.
 
 **Die Verzahnungs*beziehung* zwischen zwei Wänden gibt es als Datum nicht ([K-13.1], #83).** Ob eine
 Überlagerung eine zulässige Verzahnung oder eine Kollision ist, entsteht bei **jeder** Prüfung und
@@ -210,7 +214,10 @@ das Archiv reicht Lage und `interlocks` unverändert durch (`sembla-archiv.js` *
 und rechnet keine Verzahnungsgeometrie), und `store.dupliziere` legt eine **eigene, unverortete**
 Kopie an, die das bestehende Wandpaar nicht berührt. Die beiden Leser bilden ihre Tabelle rein
 lesend — `verzahnungenMap()` in `geschossplan.html`, `verzahnungsTabelle` in `sembla-lageplan.js` —,
-**Modul 1 bleibt der einzige Schreibweg**. Nachgewiesen ist das am **echten Pfad** (Speicherschicht →
+**Modul 1 bleibt der einzige Schreibweg**. **Verfehlt** eine Überlagerung die Verzahnung, obwohl beide
+Wände Bereiche führen (Feld neben dem Raster — Wandende ragt über die Partnerwand —, oder Bereich am
+anderen Wandende), bleibt es eine Kollision, aber `kollisionen[].verzahnung_passt_nicht` nennt den
+Grund je Wand (Statuszeile des Geschosseditors, Lageplan; R03). Nachgewiesen ist das am **echten Pfad** (Speicherschicht →
 Core → Archivexport → ZIP → Import in einen leeren Speicher → Lageplanblatt und Bewertung) in
 `tests/module/test-archiv.mjs` und `tests/module/test-lageplan.mjs`, samt Gegenprobe, dass eine
 unzulässige Überlagerung denselben Weg als Kollision übersteht. **Kein** neues Feld, **kein**

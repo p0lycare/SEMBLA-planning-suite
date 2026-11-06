@@ -285,9 +285,11 @@ store.setzeAktiv(neu.id);
 }
 
 // ---- (5) [A-33] Angedeutete Spannachse der Partnerwand: in Modul 1, 5 und 7 gleich ----------
-// L-Stoss: A (1125, Ecke belegt die unterste Lage -> Bodenblech gekuerzt) hat eine Achse im
-// Eckfeld, B (1500, Ecke ausgespart) stellt dort das Blech und hat ebenfalls eine. Gefuehrt wird
-// die Achse von B; A zeigt sie angedeutet — in allen drei Modulen mit demselben Baustein.
+// L-Stoss: A (1375 x 2800, Ecke belegt die unterste Lage -> Bodenblech gekuerzt) hat eine Achse
+// im Eckfeld, B (1500, Ecke ausgespart) stellt dort das Blech. Gefuehrt wird die Achse von B
+// (uebernommen); A zeigt sie angedeutet — in allen drei Modulen mit demselben Baustein.
+// Seit [G-11] (06.11.2026) verteilt die Automatik aus dem realen Verband; die frueher benutzte
+// Wand 1125 x 3000 hat dort keine Eckachse mehr, 1375 x 2800 schon (beide 2800 hoch).
 {
   const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
   store.fuegeProjektHinzu("Geteilter Spannpunkt");
@@ -296,15 +298,15 @@ store.setzeAktiv(neu.id);
   store.aendereMappe((m) => { const g = MAPPE.fuegeGebaeudeHinzu(m, "Haus");
     const gs = MAPPE.fuegeGeschossHinzu(g.mappe, g.id, "Erdgeschoss", 3000, "EG"); gid = gs.id; return gs.mappe; });
   const wand = (name, L, il, lage) => {
-    const w = WA.legeWandAn(store, { name, laenge_mm: L, hoehe_mm: 3000, wandtyp: "mit_wind" });
+    const w = WA.legeWandAn(store, { name, laenge_mm: L, hoehe_mm: 2800, wandtyp: "mit_wind" });
     const el = store.holeElement(w.id);
     store.speichere(el.name, WA.wandelementAktualisiert({ ...el.wandelement, interlocks: il },
       el.eingaben, store.holeKatalog(), ENG).wandelement, w.id);
     store.verorteWand(w.id, gid, { lage });
     return w.id;
   };
-  const idA = wand("A", 1125, [{ g0: 0, g1: 1, start_parity: 1 }],
-    { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 9 });
+  const idA = wand("A", 1375, [{ g0: 0, g1: 1, start_parity: 1 }],
+    { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 11 });
   wand("B", 1500, [{ g0: 0, g1: 1, start_parity: 0 }],
     { start_mm: { x: 62.5, y: 0 }, richtung: "y", laenge_grid: 12 });
   store.setzeAktivesGeschoss(gid);

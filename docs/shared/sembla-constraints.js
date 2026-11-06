@@ -866,6 +866,67 @@ function _verzahnungsOrt(A, B, ux, uy, tabelle) {
 }
 
 /**
+ * Warum passt eine Ueberlagerung NICHT als Verzahnung, obwohl BEIDE Waende Verzahnungsbereiche
+ * fuehren (R03, Felix Bauroth 06.11.2026)? Reine DIAGNOSE fuer die
+ * Kollisionsmeldung — sie entscheidet nichts: die Bewertung bleibt exakt und ohne Toleranz
+ * ([K-13.1], [K-5]). Ohne sie stand nur „ueberlappen sich um 125 × 125 mm", und wer in Modul 1
+ * die Verzahnung sah, konnte die Ursache nicht finden. Typische Ursachen:
+ *  - `ausser_raster`: das Ueberlagerungsfeld liegt in der Laengskoordinate der Wand NICHT auf
+ *    einem ganzen Rasterfeld — das Wandende ragt ueber die Aussenkante der Partnerwand hinaus
+ *    oder bleibt davor (gezeichnet ohne Rasterfang). `versatz_mm` ist der Abstand zum
+ *    naechsten Rasterfeld `feld`.
+ *  - `kein_bereich`: das Feld liegt auf Rasterfeld `feld`, dort ist aber kein Bereich geplant;
+ *    `anderes_ende` sagt, ob ein Bereich am gegenueberliegenden Wandende liegt (Rasterfelder
+ *    zaehlen vom Min-Ende = in Modul 1 links).
+ * Nur fuer rechtwinklige Waende mit voller Ueberdeckung (125 × 125 mm); sonst `null`. Ebenso
+ * `null`, wenn eine der beiden Waende gar keinen Bereich fuehrt — die Tabelle unterscheidet
+ * „ohne Verzahnung" nicht von „Wandelement fehlt" ([L-4]); dann bleibt es die gewoehnliche
+ * Kollisionsmeldung, bit-genau wie zuvor.
+ * @returns {Array<{wand:string, grund:'ausser_raster'|'kein_bereich', feld:number,
+ *   versatz_mm?:number, anderes_ende?:boolean}>|null}
+ */
+function _verzahnungPasstNicht(A, B, ux, uy, tabelle) {
+  if (!A.lage || !B.lage || A.lage.richtung === B.lage.richtung) return null;
+  if (ux !== BREITE_MM || uy !== BREITE_MM) return null;
+  const bA = _verzahnungVon(tabelle, A.id), bB = _verzahnungVon(tabelle, B.id);
+  if (!bA.length || !bB.length) return null;
+  const ort = { x: Math.max(A.r.x_min, B.r.x_min), y: Math.max(A.r.y_min, B.r.y_min) };
+  const out = [];
+  for (const [W, bereiche] of [[A, bA], [B, bB]]) {
+    const a = /** @type {'x'|'y'} */ (W.lage.richtung);
+    const n = Number(W.lage.laenge_grid);
+    const roh = (ort[a] - (a === "x" ? W.r.x_min : W.r.y_min)) / GRID_MM;
+    const feld = Math.max(0, Math.min(n - 1, Math.round(roh)));
+    if (!_istGanzzahl(roh)) {
+      out.push({ wand: W.id, grund: "ausser_raster", feld,
+        versatz_mm: Math.abs(Math.round((roh - feld) * GRID_MM * 2) / 2) });
+      continue;
+    }
+    if (_bereichAn(bereiche, roh)) continue;
+    const anderesEnde = (roh === 0 && bereiche.some((b) => b.g1 === n))
+      || (roh === n - 1 && bereiche.some((b) => b.g0 === 0));
+    out.push({ wand: W.id, grund: "kein_bereich", feld: roh, anderes_ende: anderesEnde });
+  }
+  return out.length ? out : null;
+}
+
+/**
+ * Klartext je Befund aus `_verzahnungPasstNicht` (an die Kollisionsmeldung angehaengt). Die
+ * Oberflaeche gibt ihre Wandnamen mit (`name(id)`), die Meldung im Kern nennt die Kennung.
+ * @param {Array<any>} befund @param {(id:string)=>string} [name]
+ */
+export function passtNichtText(befund, name = (id) => id) {
+  return (Array.isArray(befund) ? befund : []).map((b) => {
+    if (b.grund === "ausser_raster")
+      return `„${name(b.wand)}“: die Überlagerung liegt ${String(b.versatz_mm).replace(".", ",")} mm neben `
+        + `Rasterfeld ${b.feld} — Wandende bündig an die Außenkante der Partnerwand setzen (Rasterfang).`;
+    return `„${name(b.wand)}“: an Rasterfeld ${b.feld} ist kein Verzahnungsbereich geplant`
+      + (b.anderes_ende ? " — er liegt am anderen Wandende (Rasterfelder zählen vom Min-Ende, in Modul 1 links)."
+        : ".");
+  }).join(" ");
+}
+
+/**
  * [A-32] Behaelt eine Wand an der Verzahnungsstelle ihr Bodenblech? Gekuerzt wird nur ein
  * Bereich am WANDENDE, der die unterste Lage belegt (start_parity 1); ein Bereich mitten in
  * der Wand (die durchlaufende Wand eines T-Anschlusses) wird nie gekuerzt. Dieselbe Regel, die
@@ -960,6 +1021,13 @@ function _paare(waende, positionen, verzahnungen) {
         // [A-32] Gleiche Startlage an beiderseits markierten Verzahnungsbereichen bleibt eine
         // Kollision; benannt wird zusaetzlich, was das fuer die Bodenbleche heisst. Nur dann
         // entsteht das Feld — jede andere Kollision bleibt bit-genau.
+        // R03: Fuehrt eine der Waende Verzahnungsbereiche, aber die Ueberlagerung trifft sie
+        // nicht, wird der Grund BENANNT — entschieden wird dadurch nichts.
+        const pn = _verzahnungPasstNicht(A, B, ux, uy, verzahnungen);
+        if (pn) {
+          k.verzahnung_passt_nicht = pn;
+          k.meldung += " Keine Verzahnung: " + passtNichtText(pn);
+        }
         const o = _verzahnungsOrt(A, B, ux, uy, verzahnungen);
         if (o) {
           const bb = _blechBefund(o);

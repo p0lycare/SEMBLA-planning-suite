@@ -491,24 +491,56 @@ t("[G-10] Verzahnung start_parity=1: Lage 1 ausgespart", () => {
   assert(steineMenge[2] > 0, `Lage 2 sollte Steine im Bereich haben: ${steineMenge[2]}`);
   assert(steineMenge[3] === 0, `Lage 3 sollte 0 Steine im Bereich haben: ${steineMenge[3]}`);
 });
-t("[G-11] Vorspannung bleibt mit und ohne Verzahnung identisch", () => {
-  // Gleiche Wand, einmal ohne, einmal mit Verzahnung
+// [G-11] Fassung 06.11.2026 (Miro R03, Felix Bauroth): die Achsen werden aus dem REAL gelegten
+// Verband verteilt. Die Segmente einer Achse haengen weiter nicht an der Verzahnung (Rasterbelegung,
+// Verzahnungsfeld gilt als belegt) — dieselbe Achse hat mit und ohne Verzahnung dieselben Segmente.
+/** Segmente und Stuecke je Achse — die Teile, die nicht an der Verzahnung haengen duerfen. */
+const segKern = (w) => Object.fromEntries(w.tension_columns.map(c => [c.k,
+  JSON.stringify(c.segments.map(s => ({ z0: s.z0_mm, z1: s.z1_mm, st: s.stuecke })))]));
+function pruefeSegmenteUnabhaengig(ohne, mit, was) {
+  const o = segKern(ohne), m = segKern(mit);
+  for (const k of Object.keys(m)) if (k in o)
+    assert(o[k] === m[k], `${was}: Segmente der Achse ${k} haengen an der Verzahnung`);
+}
+t("[G-11] Achsen aus dem realen Verband: jeder gebaute Stein gehalten, Segmente unabhaengig", () => {
   const ohne = buildWall("ohneVz", 2000, 2000, [], null, null, []);
   const mit = buildWall("mitVz", 2000, 2000, [], null, null, [], [{ g0: 0, g1: 3, start_parity: 0 }]);
-  // Spannachsen, Segmente, Stangenstuecke muessen identisch sein
-  const ohneKs = ohne.tension_columns.map(c => c.k);
-  const mitKs = mit.tension_columns.map(c => c.k);
-  assert(JSON.stringify(ohneKs) === JSON.stringify(mitKs), `Achsen verschieden: ${JSON.stringify(ohneKs)} vs ${JSON.stringify(mitKs)}`);
-  // Segmente
-  for (let i = 0; i < ohne.tension_columns.length; i++) {
-    const o = ohne.tension_columns[i], m = mit.tension_columns[i];
-    assert(o.segments.length === m.segments.length, `col ${i}: Segmente verschieden`);
-    for (let j = 0; j < o.segments.length; j++) {
-      const os = o.segments[j], ms = m.segments[j];
-      assert(os.z0_mm === ms.z0_mm && os.z1_mm === ms.z1_mm, `Segment ${i}/${j}: Hoehe verschieden`);
-      assert(JSON.stringify(os.stuecke) === JSON.stringify(ms.stuecke), `Segment ${i}/${j}: Stuecke verschieden`);
-    }
+  assert(mit.validation.ungehaltene_steine.length === 0,
+    "[V-2] am realen Verband verletzt: " + JSON.stringify(mit.validation.ungehaltene_steine));
+  pruefeSegmenteUnabhaengig(ohne, mit, "2000x2000 [0,3) p0");
+});
+// Regression R03 (Felix Bauroth, 06.11.2026): 2125 x 2600, Verzahnung am Wandanfang, Achsen
+// vorher unveraendert 1,3,6,9,12,15 -> die i2 bei Raster 13-14 der ungeraden Lagen ohne Achse.
+t("[G-11] Regression R03: 2125x2600 mit Verzahnung am Anfang/Ende ohne ungehaltene Steine", () => {
+  const ps = { max_span_grid: 3, rod_lengths_mm: [1050, 820], rod_rest_mm: 100 };
+  const ohne = buildWall("r03", 2125, 2600, [], null, ps, []);
+  assert(JSON.stringify(ohne.tension_columns.map(c => c.k)) === "[1,3,6,9,12,15]", "ohne Verzahnung unveraendert");
+  for (const il of [{ g0: 0, g1: 1 }, { g0: 16, g1: 17 }]) for (const p of [0, 1]) {
+    const w = buildWall("r03", 2125, 2600, [], null, ps, [], [{ ...il, start_parity: p }]);
+    const was = `[${il.g0},${il.g1}) p${p}`;
+    assert(w.validation.ungehaltene_steine.length === 0,
+      `${was}: ${JSON.stringify(w.validation.ungehaltene_steine)}`);
+    assert(w.validation.tension_span_ok, `${was}: [V-4] verletzt`);
+    pruefeSegmenteUnabhaengig(ohne, w, was);
   }
+  const a = buildWall("r03", 2125, 2600, [], null, ps, [], [{ g0: 0, g1: 1, start_parity: 0 }]);
+  const ks = a.tension_columns.map(c => c.k);
+  assert(ks.includes(13) || ks.includes(14), "das i2 bei Raster 13-14 muss eine Achse haben: " + ks);
+});
+t("[G-11] Sweep: Auto-Verteilung haelt mit Verzahnung jeden realen Stein ([V-2])", () => {
+  let n = 0;
+  for (let N = 4; N <= 30; N++) for (const h of [1000, 2000, 2600]) for (const p of [0, 1])
+    for (const [g0, g1] of [[0, 1], [N - 1, N], [0, 2], [N - 3, N], [Math.floor(N / 2), Math.floor(N / 2) + 1]]) {
+      if (g0 <= 0 && g1 >= N) continue;
+      let w; try { w = buildWall("sw", N * GRID, h, [], null, null, [], [{ g0, g1, start_parity: p }]); }
+      catch (e) { continue; }
+      if (!w.interlocks.length) continue;
+      n++;
+      assert(w.validation.ungehaltene_steine.length === 0,
+        `N=${N} h=${h} [${g0},${g1}) p${p}: ${JSON.stringify(w.validation.ungehaltene_steine)}`);
+      assert(w.validation.tension_span_ok, `N=${N} h=${h} [${g0},${g1}) p${p}: [V-4]`);
+    }
+  assert(n > 500, "Sweep zu klein: " + n);
 });
 t("[G-10] BOM-Steinmenge ist mit Verzahnung reduziert", () => {
   const ohne = buildWall("ohneVz", 1000, 800, [], null, null, []);
@@ -518,7 +550,7 @@ t("[G-10] BOM-Steinmenge ist mit Verzahnung reduziert", () => {
   const mitSteine = mit.bom.i2 + mit.bom.i3;
   assert(mitSteine < ohneSteine, `Steinmenge sollte reduziert sein: ${mitSteine} >= ${ohneSteine}`);
   // [G-5]/#143 Die Stossfugen sind die REALEN Steinberuehrungen des ausgesparten Verbands —
-  // weniger Steine, also weniger Fugen. Die Vorspannung bleibt nach [G-11] bitgleich (eigener Test).
+  // weniger Steine, also weniger Fugen. Die Achsen folgen nach [G-11] dem realen Verband (eigener Test).
   assert(mit.bom.stossfugen < ohne.bom.stossfugen, `Stossfugen nicht reduziert: ${ohne.bom.stossfugen} vs ${mit.bom.stossfugen}`);
   for (const c of mit.courses) {
     const real = c.stones.filter((st, i) => i && c.stones[i - 1].x1 === st.x0).map(st => st.x0 / 125);
@@ -584,13 +616,12 @@ t("[G-5]/#143 unaufloesbarer Verband wird gemeldet statt still hingenommen", () 
   pruefeVerband(w, "unaufloesbar");
   assert(w.validation.buildable === true, "[G-5] ist eine Warnung, kein Baubarkeitsausschluss");
 });
-t("[G-11]/#143 Achsen, Segmente und Stangenstuecke bleiben ohne Aussparungsbezug", () => {
+t("[G-11]/#143 Segmente und Stangenstuecke je Achse bleiben ohne Aussparungsbezug", () => {
   for (const sp of [0, 1]) for (const [h, ag] of [[2930, true], [3000, false]]) {
     const mit = buildWall("mitVz", 3125, h, [], null, null, [], [{ g0: 24, g1: 25, start_parity: sp }], ag);
     const ohne = buildWall("ohneVz", 3125, h, [], null, null, [], [], ag);
-    const kern = w => JSON.stringify(w.tension_columns.map(c => ({ k: c.k,
-      seg: c.segments.map(s => ({ z0: s.z0_mm, z1: s.z1_mm, st: s.stuecke })) })));
-    assert(kern(mit) === kern(ohne), `Vorspannung verschieden (h=${h}, parity=${sp})`);
+    assert(mit.validation.ungehaltene_steine.length === 0, `h=${h} parity=${sp}: [V-2]`);
+    pruefeSegmenteUnabhaengig(ohne, mit, `h=${h} parity=${sp}`);
   }
 });
 t("[G-12] Ungueltige Verzahnung wird benannt abgewiesen", () => {
@@ -2696,7 +2727,7 @@ for a in json.loads(sys.stdin.read()):
     w = build_wall("vz", a["l"], a["h"], ops, None, None, [], a["il"])
     out.append({"courses": w["courses"], "v": w["validation"]["versatz_violations"],
                 "u": w["validation"]["ungehaltene_steine"], "bom": w["bom"],
-                "bp": w["base_plate"]})
+                "bp": w["base_plate"], "tc": w["tension_columns"]})
 print(json.dumps(out))
 `;
 t("[G-5] Paritaet JS <-> Python fuer den gemeinsam gelegten Verband", () => {
@@ -2708,6 +2739,12 @@ t("[G-5] Paritaet JS <-> Python fuer den gemeinsam gelegten Verband", () => {
     { l: 1500, h: 1600, ops: [[1, 5, 4, 7, "fenster"]], il: [] },
     { l: 1750, h: 1600, ops: [[1, 7, 0, 7, "tuer"]], il: [] },
     { l: 3000, h: 2600, ops: [[5, 12, 3, 10, "fenster"]], il: [{ g0: 23, g1: 24, start_parity: 0 }] },
+    // [G-11] Regression R03: Achsen aus dem realen Verband, py/mjs bit-gleich
+    { l: 2125, h: 2600, ops: [], il: [{ g0: 0, g1: 1, start_parity: 0 }] },
+    { l: 2125, h: 2600, ops: [], il: [{ g0: 16, g1: 17, start_parity: 0 }] },
+    { l: 1250, h: 2600, ops: [], il: [{ g0: 9, g1: 10, start_parity: 1 }] },
+    { l: 1250, h: 2600, ops: [], il: [{ g0: 0, g1: 1, start_parity: 1 }] },
+    { l: 3000, h: 2000, ops: [[8, 14, 0, 7, "tuer"]], il: [{ g0: 0, g1: 2, start_parity: 1 }] },
   ];
   const ops = []; let x = 11;
   for (let i = 0; i < 11; i++) { ops.push([x, x + 2, 1, 14, "fenster"]); x += 11; }
@@ -2721,7 +2758,7 @@ t("[G-5] Paritaet JS <-> Python fuer den gemeinsam gelegten Verband", () => {
   faelle.forEach((f, i) => {
     const w = buildWall("vz", f.l, f.h, f.ops.map(o => new Opening(...o)), null, null, [], f.il);
     deepEqual({ courses: w.courses, v: w.validation.versatz_violations, u: w.validation.ungehaltene_steine,
-      bom: w.bom, bp: w.base_plate }, py[i], `fall${i}`);
+      bom: w.bom, bp: w.base_plate, tc: w.tension_columns }, py[i], `fall${i}`);
   });
 });
 

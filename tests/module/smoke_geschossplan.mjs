@@ -4469,6 +4469,15 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   await warte(); GP.render();
   ok('#83 (Muss 3) eine nur einseitig markierte Verzahnung bleibt eine Kollision',
     GP.loesen().kollisionen.length === 1 && rot83(idA83) && rot83(idB83));
+  // R03 (Felix Bauroth 06.11.2026): Beide fuehren eine Verzahnung, aber B hat sie ein Feld daneben —
+  // weiterhin Kollision, die Statuszeile nennt jetzt aber den Grund samt Wandname.
+  setzeVerzahnung83(idB83, [{ g0: 7, g1: 8, start_parity: 1 }]);
+  await warte(); GP.render();
+  const nameB83 = store.holeElement(idB83).name;
+  ok('R03 Verzahnung ein Feld daneben: Kollision, Statuszeile nennt den Grund mit Wandname',
+    GP.loesen().kollisionen.length === 1
+    && GP.loesen().kollisionen[0].verzahnung_passt_nicht[0].grund === 'kein_bereich'
+    && $('gp-status').innerHTML.includes('keine Verzahnung: „' + nameB83 + '“: an Rasterfeld 8 ist kein Verzahnungsbereich geplant'));
   setzeVerzahnung83(idB83, [{ g0: 8, g1: 9, start_parity: 1 }]);
   await warte(); GP.render();
   ok('#83 nach dem Zurueckstellen ist es wieder die zulaessige Verzahnung',

@@ -633,19 +633,39 @@ class Verzahnung(unittest.TestCase):
             steine = [s for s in w["courses"][li]["stones"] if s["x0"] // GRID < 3]
             self.assertGreater(len(steine), 0, f"Lage {li}: sollte Steine im Bereich haben")
 
-    def test_vorspannung_identisch_mit_und_ohne_verzahnung(self):
-        # [G-11] Vorspannung bleibt bitgleich
+    @staticmethod
+    def _seg_kern(w):
+        return {c["k"]: [(sg["z0_mm"], sg["z1_mm"], sg["stuecke"]) for sg in c["segments"]]
+                for c in w["tension_columns"]}
+
+    def _segmente_unabhaengig(self, ohne, mit, was):
+        o, m = self._seg_kern(ohne), self._seg_kern(mit)
+        for k in m:
+            if k in o:
+                self.assertEqual(o[k], m[k], f"{was}: Segmente der Achse {k} haengen an der Verzahnung")
+
+    def test_achsen_aus_realem_verband(self):
+        # [G-11] Fassung 06.11.2026: Achsen aus dem REAL gelegten Verband, jeder gebaute Stein
+        # gehalten; die Segmente einer Achse haengen nicht an der Verzahnung.
         ohne = build_wall("ohneVz", 2000, 2000, [])
         mit = build_wall("mitVz", 2000, 2000, [], interlocks=[{"g0": 0, "g1": 3, "start_parity": 0}])
-        ohne_ks = [c["k"] for c in ohne["tension_columns"]]
-        mit_ks = [c["k"] for c in mit["tension_columns"]]
-        self.assertEqual(ohne_ks, mit_ks)
-        for i, (o, m) in enumerate(zip(ohne["tension_columns"], mit["tension_columns"])):
-            self.assertEqual(len(o["segments"]), len(m["segments"]), f"col {i}: Segmente verschieden")
-            for j, (os, ms) in enumerate(zip(o["segments"], m["segments"])):
-                self.assertEqual(os["z0_mm"], ms["z0_mm"])
-                self.assertEqual(os["z1_mm"], ms["z1_mm"])
-                self.assertEqual(os["stuecke"], ms["stuecke"])
+        self.assertEqual(mit["validation"]["ungehaltene_steine"], [])
+        self._segmente_unabhaengig(ohne, mit, "2000x2000 [0,3) p0")
+
+    def test_regression_r03_2125x2600(self):
+        # Felix Bauroth 06.11.2026: Achsen blieben mit Verzahnung bei 1,3,6,9,12,15 stehen, die
+        # i2 bei Raster 13-14 der ungeraden Lagen hatten keine Achse.
+        ps = {"max_span_grid": 3, "rod_lengths_mm": [1050, 820], "rod_rest_mm": 100}
+        ohne = build_wall("r03", 2125, 2600, [], None, ps, [])
+        self.assertEqual([c["k"] for c in ohne["tension_columns"]], [1, 3, 6, 9, 12, 15])
+        for g0, g1 in ((0, 1), (16, 17)):
+            for p in (0, 1):
+                with self.subTest(g0=g0, p=p):
+                    w = build_wall("r03", 2125, 2600, [], None, ps, [],
+                                   [{"g0": g0, "g1": g1, "start_parity": p}])
+                    self.assertEqual(w["validation"]["ungehaltene_steine"], [])
+                    self.assertTrue(w["validation"]["tension_span_ok"])
+                    self._segmente_unabhaengig(ohne, w, f"[{g0},{g1}) p{p}")
 
     def test_bom_steinmenge_reduziert(self):
         ohne = build_wall("ohneVz", 1000, 800, [])
@@ -654,8 +674,8 @@ class Verzahnung(unittest.TestCase):
         mit_steine = mit["bom"]["i2"] + mit["bom"]["i3"]
         self.assertLess(mit_steine, ohne_steine)
         # [G-5]/#143 Die Stossfugen sind die REALEN Steinberuehrungen des ausgesparten
-        # Verbands — weniger Steine, also weniger Fugen. (Die Vorspannung bleibt nach [G-11]
-        # bitgleich; das prueft test_vorspannung_identisch_mit_und_ohne_verzahnung.)
+        # Verbands — weniger Steine, also weniger Fugen. (Die Achsen folgen nach [G-11] dem realen
+        # Verband; das prueft test_achsen_aus_realem_verband.)
         self.assertLess(mit["bom"]["stossfugen"], ohne["bom"]["stossfugen"])
         for c in mit["courses"]:
             real = [st["x0"] // GRID for i, st in enumerate(c["stones"])
@@ -1444,7 +1464,10 @@ class TestBodenblechImVerband(unittest.TestCase):
     def test_fuge_unter_stein_der_untersten_lage(self):
         w = self._w(2500, [{"g0": 0, "g1": 1, "start_parity": 1}])
         self.assertTrue(any(s["x0"] < 125 < s["x1"] for s in w["courses"][0]["stones"]))
-        self.assertNotIn("verzahnung_bodenblech", w["validation"])
+        # Die Fuge ist ueberbrueckt. Seit [G-11] (06.11.2026) darf eine Achse im gekuerzten Feld
+        # stehen (Hinweis achse_auf_partnerblech, [A-33] regelt die Fuehrung) — keine Fugenwarnung.
+        self.assertFalse([h for h in w["validation"].get("verzahnung_bodenblech", [])
+                          if h["grund"] != "achse_auf_partnerblech"])
 
     def test_t_durchlaufende_wand_wird_nie_gekuerzt(self):
         for p in (0, 1):
