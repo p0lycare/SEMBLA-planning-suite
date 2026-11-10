@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261110-01",
+    datum: "2026-11-10",
+    typ: "feature",
+    issue: 82,
+    titel: "Verzahnung: „+ Verzahnung“ legt den Bereich jetzt 1 Raster breit an (bisher 3)",
+    testbitte: "In Modul 1 „+ Verzahnung“ klicken: der neue Bereich ist 1 Raster breit, Position 0, unterste Lage ausgespart",
+  },
+  {
     id: "chg-20261106-01",
     datum: "2026-11-06",
     typ: "fix",

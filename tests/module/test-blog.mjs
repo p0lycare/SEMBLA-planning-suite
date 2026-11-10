@@ -3528,10 +3528,11 @@ ok("die Blasenrand-Testbitte benennt Ort, Vollstaendigkeit, alle drei Ausgaben u
   && /Maßstab bleibt derselbe/.test(NEU[2]?.testbitte || ""));
 // #82 hat DREI Eintraege, weil es drei getrennte Nutzerergebnisse waren: Festlegen in
 // Modul 1, Darstellung auf der Wandzeichnung und Roundtrip ueber Export/Import/Duplizieren.
+// Dazu kam am 10.11.2026 ein vierter: die Startbreite einer neuen Verzahnung (1 statt 3 Raster).
 const neu82 = EINTRAEGE.filter(e => e.issue === 82);
-ok("genau drei Eintraege fuer Issue 82 — Festlegen in Modul 1, Darstellung im Blatt und Roundtrip",
-  neu82.length === 3
-  && neu82.map(e => e.id).join(",") === "chg-20260816-10,chg-20260816-07,chg-20260816-04");
+ok("genau vier Eintraege fuer Issue 82 — Startbreite, Festlegen in Modul 1, Darstellung im Blatt und Roundtrip",
+  neu82.length === 4
+  && neu82.map(e => e.id).join(",") === "chg-20261110-01,chg-20260816-10,chg-20260816-07,chg-20260816-04");
 ok("die Verzahnung auf der Wandzeichnung (Issue 82) folgt direkt danach",
   NEU[3]?.id === "chg-20260816-07" && NEU[3]?.issue === 82
   && NEU[3]?.typ === "feature" && NEU[3]?.datum === "2026-08-16");

@@ -4002,9 +4002,14 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   // Verzahnung ueber den realen Button hinzufuegen
   WP.addInterlock();
   ok('[#82] Verzahnung hinzugefuegt', WP.interlocks.length===1);
-  // Default-Werte: g0=0, breite=3, start_parity=0 (unterste Lage ausgespart)
-  ok('[#82] Default-Werte: Position 0, Breite 3, unterste Lage ausgespart',
-    WP.interlocks[0].g0===0 && WP.interlocks[0].breite===3 && WP.interlocks[0].start_parity===0);
+  // Default-Werte: g0=0, breite=1, start_parity=0 (unterste Lage ausgespart) — Startbreite
+  // seit 10.11.2026 ein Rasterpunkt (Felix Bauroth), vorher 3.
+  ok('[#82] Default-Werte: Position 0, Breite 1, unterste Lage ausgespart',
+    WP.interlocks[0].g0===0 && WP.interlocks[0].breite===1 && WP.interlocks[0].start_parity===0);
+  ok('[#82] neue Verzahnung: vorgaben() mit g1 = g0 + 1',
+    WP.vorgaben().interlocks[0].g1===1);
+  // Die folgenden Pruefungen arbeiten mit einem 3 Raster breiten Bereich — ausdruecklich gesetzt.
+  WP.interlocks[0].breite=3; WP.renderInterlocks(); WP.run();
   // Pruefe, dass die Verzahnung am Wandelement steht (ueber vorgaben -> buildWall)
   const vil=WP.vorgaben().interlocks;
   ok('[#82] interlocks in vorgaben() enthalten', Array.isArray(vil) && vil.length===1);

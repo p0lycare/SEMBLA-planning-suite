@@ -1418,7 +1418,7 @@ function renderInterlocks(){ const c=$('interlockList'); c.innerHTML='';
     interlocksArr[+e.target.dataset.isp].start_parity=+e.target.value; run(); }));
   c.querySelectorAll('button[data-ilrm]').forEach(b=>b.addEventListener('click',e=>{ interlocksArr.splice(+e.target.dataset.ilrm,1); renderInterlocks(); run(); }));
 }
-function addInterlock(){ const {N}=dims(); interlocksArr.push({g0:0, breite:3, start_parity:0}); renderInterlocks(); run(); }
+function addInterlock(){ const {N}=dims(); interlocksArr.push({g0:0, breite:1, start_parity:0}); renderInterlocks(); run(); }
 function buildInterlocks(N){
   // Wandelement-Format: [{g0, g1, start_parity}] — g0 inklusive, g1 exklusiv
   return interlocksArr.map(il=>({ g0: Math.max(0,Math.round(il.g0)), g1: Math.min(N, Math.max(0,Math.round(il.g0))+Math.max(1,Math.round(il.breite))), start_parity: il.start_parity===1?1:0 }));
