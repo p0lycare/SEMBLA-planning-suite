@@ -16,7 +16,8 @@ import * as K from "../../docs/shared/sembla-constraints.js";
 import * as MAPPE from "../../docs/shared/sembla-projektmappe.js";
 import { spannpunktStellen, mitGeteiltenSpannpunkten, geteiltAusSpeicher, aktualisierteLeser }
   from "../../docs/shared/sembla-wandanlage.js";
-import { lageplanDaten, blattHtml as lageplanBlatt } from "../../docs/shared/sembla-lageplan.js";
+import { lageplanDaten, blattHtml as lageplanBlatt, lageplanSvgDatei, kopfFelder, standText }
+  from "../../docs/shared/sembla-lageplan.js";
 
 let pass = 0, fail = 0;
 const ok = (n, c) => { if (c) { pass++; console.log("  ok  " + n); } else { fail++; console.log("FAIL  " + n); } };
@@ -199,20 +200,63 @@ console.log("\nT-STOSS unsauber und Lageplan-Warnungen [A-32]/[A-33]:");
     && /Zuordnung offen/.test(spannpunktHinweis(sA.geteilte_spannpunkte[0]))
     && sB.geteilte_spannpunkte[0].fuehrt === null);
   const d = lageplanDaten({ mappe: G.mappe, geschossId: G.geschossId, elemente: [...G.el.values()] });
-  ok("[A-32] Lageplan: T-Fall „Bodenbleche überlagern sich“ im Meldungsblock",
-    d.meldungen.some((x) => x.art === "bodenblech_verzahnung" && /Bodenbleche überlagern sich/.test(x.text)));
-  const html = lageplanBlatt(d, {}).html;
-  ok("[A-32]/[A-33] Lageplanblatt (Vorschau = Druck = Export) traegt beide Aussagen",
-    /Bodenbleche überlagern sich/.test(html) && /Geteilter Spannpunkt/.test(html));
+  // R03 Teil 4 (Fachentscheid Felix Bauroth 09.11.2026): ueberlagerte Bleche sind ein FEHLER.
+  const nA = G.namen.get("A"), nB = G.namen.get("B");
+  const erwartet = `Bodenbleche überlagern sich (${nA} / ${nB}, Rasterfeld 13 bzw. 15) – Startlage prüfen: `
+    + `die durchlaufende Wand ${nA} belegt die unterste Lage; dort „unterste Lage ausgespart“ wählen ([A-32]).`;
+  ok("[N-7]/[A-32] Lageplan: T-Fall mit Ueberlagerung ist „fehlerhaft“ — Grund und beide Wandnummern",
+    nA === "Wand_EG-1" && nB === "Wand_EG-2"
+    && d.stand === "fehlerhaft" && d.vollstaendig === false && standText(d) === "fehlerhaft"
+    && d.fehler.length === 1 && d.fehler[0].fall === "durchlaufend" && d.fehler[0].text === erwartet
+    // kein zweites Mal als offener Punkt gezaehlt
+    && d.meldungen.length === 0);
+  const blatt = lageplanBlatt(d, {});
+  const html = blatt.html;
+  const svgDatei = lageplanSvgDatei(d, {});
+  ok("[N-7] Schriftfeld „Stand: fehlerhaft“, Kasten nennt den Fehler (Vorschau = Druck = Export)",
+    kopfFelder(d, blatt.masstab).find((f) => f.k === "Stand").v === "fehlerhaft"
+    && /<div class="k">Stand<\/div><div class="v warn">fehlerhaft<\/div>/.test(html)
+    && html.includes("✖ <b>Fehler:</b> " + erwartet)
+    && /Geteilter Spannpunkt/.test(html));
+  ok("[N-7] Fusszeile der SVG-Datei: Stand fehlerhaft und der Fehler mit beiden Wandnummern",
+    svgDatei.includes("Stand: fehlerhaft")
+    && svgDatei.includes(`Fehler: Bodenbleche überlagern sich (${nA} / ${nB},`)
+    && !/Punkt\(e\) offen/.test(svgDatei));
+  // Das Geschossplan-Wort ist dasselbe: dieselbe Funktion aus dem Kern.
+  ok("[A-32] Geschossplan und Lageplan benutzen denselben Wortlaut",
+    K.bodenblechFehler(K.pruefeGeschoss([...MAPPE.findeGeschoss(G.mappe, G.geschossId).geschoss.waende],
+      [], null, { A: A.interlocks, B: B.interlocks }))
+      .map((f) => K.bodenblechFehlerText(f, (id) => G.namen.get(id))).join("|") === erwartet);
   // Gleiche Startlage (beide sparen die unterste Lage aus): Kollision mit Bodenblech-Zusatz.
   const A0 = buildWall("A", 4000, H, [], null, manuell(4000), [], V(13, 14, 0));
   const B0 = buildWall("B", 2000, H, [], null, manuell(2000), [], V(15, 16, 0));
   const G2 = geschoss([{ id: "A", we: A0, lage: lage(0, 62.5, "x", 32) },
                        { id: "B", we: B0, lage: lage(1687.5, -1875, "y", 16) }]);
   const d2 = lageplanDaten({ mappe: G2.mappe, geschossId: G2.geschossId, elemente: [...G2.el.values()] });
-  ok("[A-32] Lageplan: Kollision bei gleicher Startlage nennt die Bodenbleche",
-    d2.meldungen.some((x) => x.art === "kollision" && /Bodenbleche überlagern sich/.test(x.text))
+  ok("[N-7]/[A-32] Lageplan: gleiche Startlage ist „fehlerhaft“ — Grund und beide Wandnummern",
+    d2.stand === "fehlerhaft" && d2.vollstaendig === false
+    && d2.fehler.length === 1 && d2.fehler[0].fall === "gleiche_startlage"
+    && d2.fehler[0].text === `Bodenbleche überlagern sich (${G2.namen.get("A")} / ${G2.namen.get("B")}, `
+      + "Rasterfeld 13 bzw. 15) – Startlage prüfen: beide Verzahnungsbereiche beginnen in derselben "
+      + "Lage; bei einer der beiden Wände die Startlage wechseln ([A-32]/[K-13])."
+    && d2.kollisionen.length === 1 && !d2.meldungen.some((x) => x.art === "kollision")
     && /Bodenbleche überlagern sich/.test(lageplanBlatt(d2, {}).html));
+  // „fehlerhaft“ hat Vorrang vor „nicht vollstaendig“: dazu eine unverortete Wand.
+  const G3 = geschoss([{ id: "A", we: A0, lage: lage(0, 62.5, "x", 32) },
+                       { id: "B", we: B0, lage: lage(1687.5, -1875, "y", 16) },
+                       { id: "C", we: B0, lage: null }]);
+  const d3 = lageplanDaten({ mappe: G3.mappe, geschossId: G3.geschossId, elemente: [...G3.el.values()] });
+  ok("[N-7] Fehler UND offener Punkt: Stand „fehlerhaft“, der offene Punkt bleibt gezaehlt",
+    d3.stand === "fehlerhaft" && d3.fehler.length === 1
+    && d3.meldungen.length === 1 && d3.meldungen[0].art === "unverortet"
+    && /Stand: fehlerhaft/.test(lageplanSvgDatei(d3, {})) && /1 Punkt\(e\) offen/.test(lageplanSvgDatei(d3, {})));
+  // Nur offene Punkte (unverortete Wand), kein Fehler: weiterhin „nicht vollstaendig“.
+  const G4 = geschoss([{ id: "A", we: A, lage: lage(0, 62.5, "x", 32) }, { id: "C", we: B0, lage: null }]);
+  const d4 = lageplanDaten({ mappe: G4.mappe, geschossId: G4.geschossId, elemente: [...G4.el.values()] });
+  ok("[N-7] nur offene Punkte (unverortete Wand): weiterhin „nicht vollständig“",
+    d4.stand === "nicht_vollstaendig" && d4.fehler.length === 0 && d4.vollstaendig === false
+    && standText(d4) === "nicht vollständig"
+    && kopfFelder(d4, 100).find((f) => f.k === "Stand").v === "nicht vollständig");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -265,6 +309,14 @@ console.log("\nR03: L-Stoss A/B in beiden Orientierungen von B ([K-13.1]/[A-32]/
       && spannpunktHinweis(sA.geteilte_spannpunkte[0]).startsWith(`Geteilter Spannpunkt mit ${G.namen.get("B")}`)
       && spannpunktHinweis(sB.geteilte_spannpunkte[0]).startsWith(`Geteilter Spannpunkt mit ${G.namen.get("A")}`)
       && achsenAn(sA, 16) === 1);
+    // R03 Teil 4: die gueltige L-Ecke ist im Lageplan „vollstaendig“ — der geteilte Spannpunkt
+    // ist ein Hinweis, kein Fehler und kein offener Punkt.
+    const dL = lageplanDaten({ mappe: G.mappe, geschossId: G.geschossId, elemente: [...G.el.values()] });
+    ok(`[N-7] R03 ${was}: Lageplan „vollständig“ mit Hinweis „Geteilter Spannpunkt“`,
+      dL.stand === "vollstaendig" && dL.vollstaendig === true && dL.fehler.length === 0
+      && dL.meldungen.length === 0 && standText(dL) === "vollständig"
+      && dL.hinweise.some((h) => h.art === "geteilter_spannpunkt" && /^Geteilter Spannpunkt/.test(h.text))
+      && !/Fehler:/.test(lageplanBlatt(dL, {}).html));
     // Gleiche Startlage bleibt Kollision und nennt die Bodenblech-Ueberlagerung.
     const B0 = buildWall("B", 1250, HR, [], null, ps, [], V(feldB, feldB + 1, 0));
     const k0 = K.pruefeGeschoss(waende, [], null, { A: A.interlocks, B: B0.interlocks }).kollisionen;

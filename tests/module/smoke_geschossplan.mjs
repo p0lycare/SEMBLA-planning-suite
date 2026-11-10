@@ -4439,10 +4439,11 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#83 (Muss 1) und die Statuszeile fuehrt keine Kollision mehr auf',
     !/Kollision\(en\)/.test($('gp-status').innerHTML)
     && ($('gp-status').innerHTML.match(/class="err"/g) || []).length
-      === ($('gp-status').innerHTML.match(/class="err">⚠ \d+ Verzahnung\(en\) mit überlagerten Bodenblechen/g) || []).length);
-  ok('[A-32] die mittige Kreuzung mit belegter unterster Lage nennt die Bodenblech-Ueberlagerung samt Empfehlung',
-    /Verzahnung\(en\) mit überlagerten Bodenblechen/.test($('gp-status').innerHTML)
-    && /durchlaufend mit belegter unterster Lage: [^,)]+\)/.test($('gp-status').innerHTML)
+      === ($('gp-status').innerHTML.match(/class="err">✖ \d+ Fehler: Bodenbleche überlagern sich/g) || []).length);
+  // R03 Teil 4: derselbe Fehler-Wortlaut wie im Lageplan (`bodenblechFehlerText`), mit beiden Wänden.
+  ok('[A-32]/[N-7] die mittige Kreuzung mit belegter unterster Lage steht als Fehler mit beiden Wänden und Empfehlung',
+    /✖ 1 Fehler: Bodenbleche überlagern sich \(Wand_[A-Z0-9]+-\d+ \/ Wand_[A-Z0-9]+-\d+, Rasterfeld \d+ bzw\. \d+\) – Startlage prüfen: die durchlaufende Wand Wand_[A-Z0-9]+-\d+ belegt die unterste Lage/
+      .test($('gp-status').innerHTML)
     && /unterste Lage ausgespart/.test($('gp-status').innerHTML));
   ok('#83 keine der beiden Waende ist rot ([K-8])',
     !rot83(idA83) && !rot83(idB83) && gruppe83(idA83) !== '' && gruppe83(idB83) !== '');

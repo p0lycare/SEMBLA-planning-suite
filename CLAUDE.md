@@ -241,7 +241,18 @@ Befundfall): `durchlaufend_lage1_belegt` (Empfehlung „unterste Lage ausgespart
 stille Sonderlösung), `kein_bodenblech`, `achse_auf_partnerblech` (Fußschraube auf dem Blech der
 Partnerwand). Im Geschossplan trägt eine Verzahnungsstelle mit überlagerten Blechen
 `bodenblech_hinweis`/`bodenblech_durchlaufend`, eine Kollision bei gleicher Startlage
-`bodenbleche` samt Zusatz in der Meldung (`sembla-constraints.js`). Kein Schalter, keine
+`bodenbleche` samt Zusatz in der Meldung (`sembla-constraints.js`). **Überlagerte Bleche sind ein
+Fehler, kein unvollständiger Plan ([N-7], Fachentscheid Felix Bauroth 09.11.2026):**
+`bodenblechFehler(erg)` sammelt beide Fälle (T-Stoß `durchlaufend`, `gleiche_startlage` — dort
+trägt die Kollision dafür `raster`), `bodenblechFehlerText` gibt den **einen** Wortlaut „Bodenbleche
+überlagern sich (Wand_EG-2 / Wand_EG-3, Rasterfeld … bzw. …) – Startlage prüfen: …" für die
+Statuszeile des Geschossplans **und** den Lageplan. Dort stehen sie in `daten.fehler` (nicht in
+`meldungen`), `daten.stand` ist `fehlerhaft` > `nicht_vollstaendig` > `vollstaendig` (`STAND_TEXT`/
+`standText`: Badge, Schriftfeld „Stand", Kasten, Fußzeile der SVG-Datei); Export bleibt möglich.
+`bodenbleche: "fehlen"` und alle übrigen Kollisionen bleiben offene Punkte. Einen T-Fall „durchlaufend
+mit belegter unterster Lage **ohne** Überlagerung" gibt es im Geschoss nicht (die Partnerwand muss die
+unterste Lage aussparen und behält ihr Blech) — `durchlaufend_lage1_belegt` bleibt der Hinweis der
+**einzelnen** Wand in Modul 1. Kein Schalter, keine
 Migration, kein Schema-/Formatsprung; Wände ohne solche Verzahnung bleiben bit-gleich.
 
 **Geteilter Spannpunkt an der Verzahnung ([A-33], Fachentscheid Felix Bauroth 04.11.2026).** Eine
@@ -707,6 +718,8 @@ erzwungen, weil beide Seiten `sembla-massbild.js` benutzen und die Editor-Inline
 **Unverortete, verwaiste, widersprüchliche und kollidierende Wände** werden **namentlich** auf dem
 Blatt benannt, und ein unvollständiger Stand wird nie als vollständig ausgegeben ([N-7]); eine
 verortete, aber unbemaßte Wand ist dagegen nach [K-8] „frei" und bleibt ein **Hinweis**, kein Mangel.
+Seit R03 Teil 4 gibt es drei Stände — **fehlerhaft** (überlagerte Bodenbleche an einer Verzahnung,
+[A-32], benannt mit Grund und beiden Wandnummern) vor **nicht vollständig** vor **vollständig**.
 **Projekt und Geschoss** sind im Modul wählbar; die Auswahl setzt **keinen** aktiven Zeiger ([L-10]) —
 vorbelegt wird aus dem aktiven Pfad, maßgeblich ist der sichtbare **Blattbezug**. Es gibt **genau ein
 Blatt je Geschoss** mit eigener Bauzeichnungsreihe **1:50/100/200/250/500**; passt ein Geschoss selbst

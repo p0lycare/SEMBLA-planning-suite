@@ -1754,18 +1754,24 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   ];
   for (const [was, il] of faelle) {
     const d = LP.lageplanDaten({ mappe: mV, geschossId: gsV, elemente: elVerz(il) });
+    // [A-32]/[N-7] Seit R03 Teil 4 ist die GLEICHE Startlage mit ueberlagerten Bodenblechen ein
+    // benannter Fehler (Stand „fehlerhaft“, eigener Kasten) statt eines offenen Punkts; die
+    // Kollision selbst bleibt. Alle anderen Faelle bleiben bitgleich zum Blatt ohne Verzahnung.
+    const gleicheStartlage = was.startsWith("falsche");
     t(`#83 ${was}: weiterhin Kollision samt Vollstaendigkeitsmangel`,
       d.kollisionen.length === 1 && d.verzahnungen.length === 0
-      && d.meldungen.some((x) => x.art === "kollision" && x.text.includes(NX)
-        && x.text.includes(NY))
       && d.vollstaendig === false
       && !d.hinweise.some((h) => h.art === "verzahnung")
-      // [A-32] Seit R03 Teil 2 benennt das Blatt bei GLEICHER Startlage zusaetzlich die
-      // ueberlagerten Bodenbleche (eigener Kasten) — sonst bleibt es bitgleich.
-      && (was.startsWith("falsche")
-        ? LP.verbundHtml(d).includes("Bodenbleche überlagern sich")
-          && LP.blattHtml(d).html.replace(LP.verbundHtml(d), "") === LP.blattHtml(dOhne).html
-        : LP.blattHtml(d).html === LP.blattHtml(dOhne).html));
+      && (gleicheStartlage
+        ? d.stand === "fehlerhaft" && d.fehler.length === 1
+          && d.fehler[0].text.includes(NX) && d.fehler[0].text.includes(NY)
+          && LP.verbundHtml(d).includes("Bodenbleche überlagern sich")
+          && LP.blattHtml(d).html.replace(LP.verbundHtml(d), "")
+            === LP.blattHtml(dOhne).html.replace(">nicht vollständig<", ">fehlerhaft<")
+        : d.stand === "nicht_vollstaendig"
+          && d.meldungen.some((x) => x.art === "kollision" && x.text.includes(NX)
+            && x.text.includes(NY))
+          && LP.blattHtml(d).html === LP.blattHtml(dOhne).html));
   }
   // Eine GEWOEHNLICHE Ueberlagerung — zwei parallele Waende uebereinander — bleibt
   // Kollision, auch wenn beide Waende Verzahnungsbereiche fuehren.
@@ -1924,12 +1930,13 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   // Gegenprobe: derselbe Archivweg mit gleicher Startparitaet bleibt Kollision.
   const stK = await archivStand(PASSEND[0], [{ g0: 0, g1: 1, start_parity: 0 }]);
   const dK = LP.lageplanDaten({ mappe: stK.mappe, geschossId: stK.gsId, elemente: stK.elemente });
+  // Gleiche Startlage am Wandende: beide Bleche bleiben — seit R03 Teil 4 ein benannter Fehler.
   t("#83 eine unzulaessige Ueberlagerung bleibt nach dem Archivweg Kollision",
     dK.kollisionen.length === 1 && dK.verzahnungen.length === 0
-    && dK.meldungen.some((x) => x.art === "kollision"
-      && x.text.includes(MAPPE.findeWand(stK.mappe, "wnd-vx").wand.name))
-    && dK.vollstaendig === false
-    && /nicht vollständig/i.test(LP.blattHtml(dK).html));
+    && dK.fehler.length === 1
+    && dK.fehler[0].text.includes(MAPPE.findeWand(stK.mappe, "wnd-vx").wand.name)
+    && dK.vollstaendig === false && dK.stand === "fehlerhaft"
+    && /<div class="v warn">fehlerhaft<\/div>/.test(LP.blattHtml(dK).html));
 
   // Duplizieren: die Kopie ist eine neue, unverortete Wand — das bestehende Paar
   // wird davon nicht beruehrt, das Blatt bleibt bitgleich.

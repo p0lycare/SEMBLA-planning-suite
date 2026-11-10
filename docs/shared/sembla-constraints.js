@@ -983,6 +983,51 @@ function _passendeVerzahnung(A, B, ux, uy, tabelle) {
   return v;
 }
 
+/**
+ * [A-32]/[N-7] Ueberlagerte Bodenbleche an einer Verzahnung sind ein FEHLER der Planung, kein
+ * unvollstaendiger Stand (Fachentscheid Felix Bauroth, 09.11.2026, Miro R03). Zwei Faelle, beide
+ * aus DERSELBEN Rechnung von `pruefeGeschoss`, hier nur eingesammelt — nichts nachgerechnet:
+ *   * `durchlaufend` — zulaessige Verzahnung (T-Stoss), die durchlaufende Wand belegt die
+ *     unterste Lage, beide behalten ihr Blech (`bodenblech_hinweis`);
+ *   * `gleiche_startlage` — beide Verzahnungsbereiche beginnen in derselben Lage, die Stelle
+ *     bleibt Kollision ([K-13]) und beide Bleche liegen uebereinander (`bodenbleche: "ueberlagern"`).
+ * Der dritte Kollisionsbefund `bodenbleche: "fehlen"` (gleiche Startlage, KEIN Blech) ist kein
+ * Ueberlagerungsfall und bleibt eine gewoehnliche Kollision.
+ * @param {{kollisionen?:any[], verzahnungen?:any[]}} erg Ergebnis von `pruefeGeschoss`
+ * @returns {Array<{fall:'durchlaufend'|'gleiche_startlage', a:string, b:string,
+ *                  raster:{a:number,b:number}, durchlaufend:string[]}>}
+ */
+export function bodenblechFehler(erg) {
+  const out = [];
+  for (const v of ((erg && erg.verzahnungen) || [])) {
+    if (!v.bodenblech_hinweis) continue;
+    out.push({ fall: "durchlaufend", a: v.a, b: v.b, raster: v.raster,
+      durchlaufend: (v.bodenblech_durchlaufend || []).slice() });
+  }
+  for (const k of ((erg && erg.kollisionen) || [])) {
+    if (k.bodenbleche !== "ueberlagern") continue;
+    out.push({ fall: "gleiche_startlage", a: k.a, b: k.b, raster: k.raster || null, durchlaufend: [] });
+  }
+  return out;
+}
+
+/**
+ * Der EINE Wortlaut eines Bodenblech-Fehlers — Lageplan (Modul 9) und Geschossplan benutzen ihn
+ * beide, damit dieselbe Stelle an beiden Orten gleich heisst.
+ * @param {ReturnType<typeof bodenblechFehler>[number]} f
+ * @param {(id:string)=>string} [namen] Wandkennung -> Wandname (`Wand_EG-2`)
+ */
+export function bodenblechFehlerText(f, namen) {
+  const n = typeof namen === "function" ? namen : (id) => String(id);
+  const ort = `${n(f.a)} / ${n(f.b)}` + (f.raster ? `, Rasterfeld ${f.raster.a} bzw. ${f.raster.b}` : "");
+  return `Bodenbleche überlagern sich (${ort}) – Startlage prüfen: `
+    + (f.fall === "durchlaufend"
+      ? `die durchlaufende Wand ${f.durchlaufend.map(n).join(" und ")} belegt die unterste Lage; `
+        + "dort „unterste Lage ausgespart“ wählen ([A-32])."
+      : "beide Verzahnungsbereiche beginnen in derselben Lage; bei einer der beiden Wände die "
+        + "Startlage wechseln ([A-32]/[K-13]).");
+}
+
 // --- Kollisionen ([K-13]) -------------------------------------------------
 
 /**
@@ -1033,6 +1078,9 @@ function _paare(waende, positionen, verzahnungen) {
           const bb = _blechBefund(o);
           if (bb !== "ok") {
             k.bodenbleche = bb;
+            // R03 Teil 4: die Stelle mit Rasterfeld je Wand — fuer den benannten Fehler
+            // `bodenblechFehler()` (Lageplan und Geschossplan mit demselben Wortlaut).
+            k.raster = { a: o.sa.g, b: o.sb.g };
             k.meldung += bb === "ueberlagern"
               ? " Gleiche Startlage beider Verzahnungsbereiche — Bodenbleche überlagern sich ([A-32])."
               : " Gleiche Startlage beider Verzahnungsbereiche — unter der Verzahnung liegt kein Bodenblech ([A-32]).";

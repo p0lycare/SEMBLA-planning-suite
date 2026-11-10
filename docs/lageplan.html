@@ -410,13 +410,19 @@ function render(){
     + ` · Feld ${bl.feld_mm.w} × ${bl.feld_mm.h} mm`;
   const st = $('lp-stand');
   st.className = 'badge ' + (DATEN.vollstaendig ? 'ok' : 'no');
-  st.textContent = DATEN.vollstaendig ? 'vollständig' : 'nicht vollständig';
+  // [N-7] Drei Stände, ein Wortlaut (`standText`): „fehlerhaft" vor „nicht vollständig".
+  st.textContent = LP.standText(DATEN);
   bezugSync();
   planStatusSync();
   // [N-7]: der unvollständige Stand wird benannt — mit Zahl, nicht mit Gefühl.
   // Seit #73 listet das Blatt die Punkte nicht mehr selbst; das Schriftfeld weist
   // den Stand aus, behoben wird im Geschossplaner.
-  if (!DATEN.vollstaendig) {
+  if (DATEN.fehler.length) {
+    // R03 Teil 4: überlagerte Bodenbleche sind ein Fehler — benannt mit Grund und beiden Wänden.
+    zeige(`Dieser Lageplan ist fehlerhaft: ${DATEN.fehler.map(f => f.text).join(' ')}`
+      + (DATEN.meldungen.length ? ` Dazu ${DATEN.meldungen.length} offene(r) Punkt(e).` : '')
+      + ' Behoben wird im Geschossplaner bzw. in Modul 1 (Verzahnung).', false);
+  } else if (!DATEN.vollstaendig) {
     zeige(`Dieser Lageplan ist nicht vollständig: ${DATEN.meldungen.length} Punkt(e) `
       + '— behoben wird im Geschossplaner; das Schriftfeld weist den Stand aus.', false);
   } else if (DATEN.hinweise.length) {
@@ -475,7 +481,7 @@ function exportiere(){
     ZIP.downloadZip(LP.dateiRumpf(DATEN) + '.zip', dateien.map(d => ({ name: d.name, data: d.data })));
   } catch (e) { zeige('Export fehlgeschlagen: ' + fehlerText(e), false); return false; }
   zeige('Exportiert: ' + dateien.map(d => d.name).join(', ')
-    + (DATEN.vollstaendig ? '' : ' — der Stand ist als nicht vollständig gekennzeichnet.'), true);
+    + (DATEN.vollstaendig ? '' : ` — der Stand ist als ${LP.standText(DATEN)} gekennzeichnet.`), true);
   return true;
 }
 

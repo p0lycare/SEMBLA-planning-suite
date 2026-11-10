@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261110-03",
+    datum: "2026-11-10",
+    typ: "feature",
+    issue: 138,
+    titel: "Lageplan: überlagerte Bodenbleche an einer Verzahnung kennzeichnen das Blatt als „fehlerhaft“",
+    testbitte: "T-Stoß, dessen durchlaufende Wand die unterste Lage belegt, im Lageplan öffnen: Stand „fehlerhaft“, "
+      + "Kasten und Schriftfeld nennen „Bodenbleche überlagern sich (Wand_… / Wand_…)“; eine gültige Ecke bleibt vollständig",
+  },
+  {
     id: "chg-20261110-02",
     datum: "2026-11-10",
     typ: "feature",

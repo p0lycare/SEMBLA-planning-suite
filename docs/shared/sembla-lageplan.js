@@ -66,6 +66,8 @@ import {
   geteilteSpannpunkte,
   // R03: benannter Grund, warum eine geplante Verzahnung die Ueberlagerung nicht trifft.
   passtNichtText,
+  // R03 Teil 4: ueberlagerte Bodenbleche als benannter Fehler — derselbe Wortlaut wie im Geschossplan.
+  bodenblechFehler, bodenblechFehlerText,
 } from "./sembla-constraints.js";
 import { massKontext, massGeometrie, massTextLayout, massAnker, massPfad } from "./sembla-massbild.js";
 import { findeGeschoss, kopfdaten as mappeKopfdaten, laengenAbgleich } from "./sembla-projektmappe.js";
@@ -539,6 +541,9 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
       + ". Die Positionen behalten den letzten widerspruchsfreien Stand ([K-6])." });
   }
   for (const k of koll) {
+    // R03 Teil 4: gleiche Startlage mit ueberlagerten Bodenblechen ist ein FEHLER und steht
+    // in `fehler` (s. u.) — als offener Punkt gezaehlt waere dieselbe Stelle doppelt benannt.
+    if (k.bodenbleche === "ueberlagern") continue;
     meldungen.push({ art: "kollision", text:
       `Kollision: „${name(k.a)}“ und „${name(k.b)}“ überlappen sich um `
       + `${_fmt(k.ueberlappung_mm.x)} × ${_fmt(k.ueberlappung_mm.y)} mm — gemeldet, nichts `
@@ -572,28 +577,24 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
     };
   });
   for (const v of verzahnungen) hinweise.push({ art: "verzahnung", text: v.text });
-  // [A-32] Durchlaufende Wand mit belegter unterster Lage an einer Verzahnung: die Bodenbleche
-  // ueberlagern sich. Dieselbe Aussage wie im Geschossplan, aus derselben Rechnung — als
-  // MELDUNG, weil die Stelle manuell zu pruefen ist (kein Baubarkeitsausschluss).
+  // [A-32]/[N-7] Ueberlagerte Bodenbleche an einer Verzahnung sind ein FEHLER, kein
+  // unvollstaendiger Stand (Fachentscheid Felix Bauroth, 09.11.2026, R03 Teil 4): T-Stoss mit
+  // belegter unterster Lage der durchlaufenden Wand ODER gleiche Startlage beider Bereiche.
+  // Eingesammelt aus derselben Kernrechnung, benannt mit Grund und BEIDEN Wandnamen —
+  // derselbe Wortlaut wie in der Statuszeile des Geschossplans (`bodenblechFehlerText`).
+  /** @type {Array<{art:string,fall:string,a:string,b:string,raster:any,text:string}>} */
+  const fehler = bodenblechFehler(erg).map((f) => ({
+    art: "bodenbleche_ueberlagern", fall: f.fall, a: f.a, b: f.b, raster: f.raster,
+    text: bodenblechFehlerText(f, name) }));
   /** [A-32]/[A-33] Befunde an Verzahnungen fuer den eigenen Kasten des Blattes. */
-  const verbund = [];
+  const verbund = fehler.map((f) => ({ art: f.art, fehler: true, warnung: true, text: f.text }));
+  // Gleiche Startlage OHNE Blech (`fehlen`) ist kein Ueberlagerungsfall: Kollision wie bisher,
+  // im Kasten weiter als Warnung benannt.
   for (const k of koll) {
-    if (!k.bodenbleche) continue;
+    if (k.bodenbleche !== "fehlen") continue;
     verbund.push({ art: "kollision", warnung: true, text:
       `„${name(k.a)}“ ↔ „${name(k.b)}“: gleiche Startlage beider Verzahnungsbereiche — `
-      + (k.bodenbleche === "ueberlagern" ? "Bodenbleche überlagern sich" : "kein Bodenblech unter der Verzahnung")
-      + " (Kollision, [K-13]/[A-32])." });
-  }
-  for (const v of (erg.verzahnungen || [])) {
-    if (!v.bodenblech_hinweis) continue;
-    const m = { art: "bodenblech_verzahnung", text:
-      `Bodenbleche überlagern sich an der Verzahnung „${name(v.a)}“ ↔ „${name(v.b)}“ `
-      + `(Rasterfeld ${v.raster.a} bzw. ${v.raster.b}): die durchlaufende Wand `
-      + `${(v.bodenblech_durchlaufend || []).map((id) => `„${name(id)}“`).join(" und ")} belegt dort `
-      + "die unterste Lage und behält ihr Bodenblech — manuell prüfen. Empfehlung: bei der "
-      + "durchlaufenden Wand „unterste Lage ausgespart“ wählen ([A-32])." };
-    meldungen.push(m);
-    verbund.push({ ...m, warnung: true });
+      + "kein Bodenblech unter der Verzahnung (Kollision, [K-13]/[A-32])." });
   }
   // [A-33] Geteilter Spannpunkt je Wandpaar: eine Spannachse im Verzahnungsfeld ist EINE Achse
   // durch beide Waende; gefuehrt wird sie von der Wand, die dort das Bodenblech stellt. Gelesen
@@ -657,10 +658,14 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
     verzahnungen,
     /** [A-32]/[A-33] Bodenblech- und Spannpunktbefunde an Verzahnungen — eigener Blattkasten. */
     verbund,
+    /** [N-7] Benannte Fehler (ueberlagerte Bodenbleche, R03 Teil 4) — Vorrang vor offenen Punkten. */
+    fehler,
     meldungen,
     hinweise,
-    /** [N-7]: nur ein mangelfreier Stand wird als vollstaendig ausgegeben. */
-    vollstaendig: meldungen.length === 0,
+    /** [N-7] `fehlerhaft` > `nicht_vollstaendig` > `vollstaendig` (Schluessel von `STAND_TEXT`). */
+    stand: fehler.length ? "fehlerhaft" : meldungen.length ? "nicht_vollstaendig" : "vollstaendig",
+    /** [N-7]: nur ein mangel- und fehlerfreier Stand wird als vollstaendig ausgegeben. */
+    vollstaendig: meldungen.length === 0 && fehler.length === 0,
   };
 }
 
@@ -1268,9 +1273,29 @@ export function kopfFelder(daten, masstab) {
     // Die EINE Einheitenangabe der Ausgabe (#64): die Maßzahlen in der Zeichnung
     // sind reine Millimeterwerte und tragen deshalb kein Suffix.
     { k: "Einheit", v: "mm" },
-    { k: "Stand", v: daten.vollstaendig ? "vollständig" : "nicht vollständig",
-      warn: !daten.vollstaendig },
+    { k: "Stand", v: standText(daten), warn: !daten.vollstaendig },
   ];
+}
+
+/**
+ * [N-7] Die drei Staende des Blattes und ihr EINER Wortlaut (Badge in Modul 9, Schriftfeld,
+ * Fusszeile der SVG-Datei). `fehlerhaft` hat Vorrang vor `nicht vollstaendig` (R03 Teil 4).
+ */
+export const STAND_TEXT = Object.freeze({
+  vollstaendig: "vollständig",
+  nicht_vollstaendig: "nicht vollständig",
+  fehlerhaft: "fehlerhaft",
+});
+
+/**
+ * Stand eines Blattes als Text. Ein Datenstand ohne `stand` (aelterer Aufrufer) faellt auf
+ * `vollstaendig` zurueck — so bleibt jede bisherige Ausgabe bitgleich.
+ * @param {any} daten
+ */
+export function standText(daten) {
+  const st = daten && daten.stand ? daten.stand
+    : (daten && daten.vollstaendig ? "vollstaendig" : "nicht_vollstaendig");
+  return STAND_TEXT[st] || STAND_TEXT.nicht_vollstaendig;
 }
 
 /**
@@ -1370,7 +1395,10 @@ export function verbundHtml(daten) {
   if (!liste.length) return "";
   return `<div class="lpbox lpverbund"><h4>Verzahnung – Bodenblech und Spannpunkt</h4>`
     + `<ul class="lpverz-liste">`
-    + liste.map((e) => `<li${e.warnung ? ' class="warn"' : ""}>${e.warnung ? "⚠ " : ""}${_esc(e.text)}</li>`).join("")
+    + liste.map((e) => e.fehler
+      // R03 Teil 4: ein Fehler steht als solcher da — Wort statt nur Farbe (Schwarz-Weiss-Druck).
+      ? `<li class="fehler">✖ <b>Fehler:</b> ${_esc(e.text)}</li>`
+      : `<li${e.warnung ? ' class="warn"' : ""}>${e.warnung ? "⚠ " : ""}${_esc(e.text)}</li>`).join("")
     + `</ul></div>`;
 }
 
@@ -1485,6 +1513,7 @@ ${FORMATE.map((f) => `  .lpsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${bl
   .lpverz-info{margin:0;font-size:10px;line-height:1.45;color:#4a5663}
   .lpverz-liste{margin:4px 0 0;padding-left:16px;font-size:10.5px}
   .lpverbund .lpverz-liste li.warn{color:#c9461c}
+  .lpverbund .lpverz-liste li.fehler{color:#b3261e}
   .lplegende{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px}
   .lplegende span{display:flex;align-items:center;gap:4px}
   .lplegende i{width:14px;height:4px;border-radius:2px;display:inline-block}
@@ -1556,7 +1585,10 @@ export function lageplanSvgDatei(daten, opts) {
   const stuecke = felder.filter((f) => f.v !== "").map((f) => `${f.k}: ${f.v}`);
   // Nur die Anzahl — die Einzelmeldungen stehen seit #73 nicht mehr auf dem Blatt,
   // ein Verweis „s. Blatt" waere also falsch. Nachgesehen wird in Modul 9 selbst.
-  if (!daten.vollstaendig) stuecke.push(`${daten.meldungen.length} Punkt(e) offen`);
+  // R03 Teil 4: Fehler stehen benannt in der Datei (Grund und beide Wandnummern) — sie sind
+  // kein offener Punkt, sondern zu beheben; die offenen Punkte bleiben nur gezaehlt.
+  const fehlerTexte = (daten.fehler || []).map((f) => `Fehler: ${f.text}`);
+  if ((daten.meldungen || []).length) stuecke.push(`${daten.meldungen.length} Punkt(e) offen`);
 
   // Die Fusszeile wird deterministisch nach GESCHAETZTER Breite umgebrochen
   // (Zeichenbreite ~ 0,5 · Schriftgroesse), damit sie auch bei einem schmalen Geschoss
@@ -1572,6 +1604,16 @@ export function lageplanSvgDatei(daten, opts) {
     const i = zeilen.length - 1;
     if (i >= 0 && (zeilen[i] + " · " + s).length <= proZeile) zeilen[i] += " · " + s;
     else zeilen.push(s);
+  }
+  // Ein Fehlertext ist laenger als jede Kopfangabe: er beginnt eine eigene Zeile und wird an
+  // Wortgrenzen umgebrochen, damit er nicht aus dem Blatt laeuft. Ohne Fehler entfaellt das.
+  for (const ft of fehlerTexte) {
+    let z0 = "";
+    for (const wort of ft.split(" ")) {
+      if (z0 && (z0 + " " + wort).length > proZeile) { zeilen.push(z0); z0 = wort; }
+      else z0 = z0 ? z0 + " " + wort : wort;
+    }
+    if (z0) zeilen.push(z0);
   }
   // Die Datei zeichnet in einem bei 0/0 beginnenden Blatt und schiebt die Zeichnung
   // per `translate` unter die Kopfzeile. Der Blasenrand (#59) waechst deshalb hier

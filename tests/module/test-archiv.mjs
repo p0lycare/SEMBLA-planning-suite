@@ -459,9 +459,10 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
   const dQ = LP.lageplanDaten({ mappe: q.mappe, geschossId: q.gsId, elemente: q.elemente });
   ok("[#83] gleiche Startparitaet bleibt nach demselben Archivweg eine Kollision",
     dQ.kollisionen.length === 1 && dQ.verzahnungen.length === 0
-    && dQ.meldungen.some((x) => x.art === "kollision")
+    // Seit R03 Teil 4: gleiche Startlage mit ueberlagerten Bodenblechen = benannter Fehler.
+    && dQ.fehler.length === 1 && dQ.stand === "fehlerhaft"
     && dQ.vollstaendig === false
-    && /nicht vollständig/i.test(LP.blattHtml(dQ).html));
+    && /<div class="v warn">fehlerhaft<\/div>/.test(LP.blattHtml(dQ).html));
   ok("[#83] auch der Geschosseditor bleibt bei der Kollision",
     (() => { const e = editorBewertung(q.mappe, q.gsId);
       return e.kollisionen.length === 1 && e.verzahnungen.length === 0; })());

@@ -3828,16 +3828,14 @@ function statusSync(erg, koll, verz, els){
         + `${v.raster.b}, Lagen wechselseitig ausgespart)`).join(', '))
       + ' — keine Kollision ([K-13]/[G-10])</span>');
   }
-  // [A-32] Durchlaufende Wand mit belegter unterster Lage an einer Verzahnung: nicht sauber
-  // lösbar — als Warnung zur manuellen Prüfung an genau dieser Stelle benannt.
-  const vzBlech = (verz || []).filter(v => v.bodenblech_hinweis);
-  if (vzBlech.length) {
-    teile.push(`<span class="err">⚠ ${vzBlech.length} Verzahnung(en) mit überlagerten `
-      + 'Bodenblechen: ' + esc(vzBlech.map(v => `${namenRoh(v.a)} ↔ ${namenRoh(v.b)} (Rasterfeld `
-        + `${v.raster.a} bzw. ${v.raster.b}; durchlaufend mit belegter unterster Lage: `
-        + `${v.bodenblech_durchlaufend.map(namenRoh).join(', ')})`).join(', '))
-      + ' — manuell prüfen. Empfehlung: bei der durchlaufenden Wand „unterste Lage ausgespart“ '
-      + 'wählen ([A-32])</span>');
+  // [A-32]/[N-7] Überlagerte Bodenbleche an einer Verzahnung sind ein FEHLER (Fachentscheid
+  // Felix Bauroth 09.11.2026, R03 Teil 4): T-Stoß mit belegter unterster Lage der durchlaufenden
+  // Wand oder gleiche Startlage beider Bereiche. Derselbe Wortlaut wie im Lageplan (Modul 9) —
+  // eingesammelt und formuliert in `sembla-constraints.js`, hier nur angezeigt.
+  const blechFehler = CON.bodenblechFehler({ kollisionen: koll, verzahnungen: verz || [] });
+  if (blechFehler.length) {
+    teile.push(`<span class="err">✖ ${blechFehler.length} Fehler: `
+      + esc(blechFehler.map(f => CON.bodenblechFehlerText(f, namenRoh)).join(' ')) + '</span>');
   }
   // [A-33] Geteilter Spannpunkt je Wandpaar: eine Spannachse im Verzahnungsfeld ist EINE Achse
   // durch beide Wände; geführt wird sie von der Wand, die dort das Bodenblech stellt. Dieselbe
