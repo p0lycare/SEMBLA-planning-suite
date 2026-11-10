@@ -3318,6 +3318,55 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   globalThis.localStorage = alt101Storage;
 }
 
+// --- Tooltips abschaltbar (Todoist 6hwcWq432p5x9Jj5): Schalter in der Kopfleiste ---
+// Gemountet wird die ECHTE Navbar gegen einen frischen echten Storage. Der Schalter
+// schreibt ueber storage.js, wirkt suite-weit ueber AX.tooltipsAnzeigen und fehlt auf
+// Modul 8 (streng statisch, schreibt nichts).
+{
+  const altTipStorage = globalThis.localStorage;
+  globalThis.localStorage = new MemStorage();
+  store.migrieren();
+  const navT = new El('sb-nav');
+  const altTipQuery = document.querySelector;
+  document.querySelector = (sel) => (sel === '.sb-nav' ? navT : null);
+  delete document._e['sb-tipp'];
+
+  mountNavbar(0);
+  const knopfT = $('sb-tipp');
+  ok('Tooltips: die Kopfleiste fuehrt einen Schalter „Tooltips"',
+    /<button type="button" class="sb-tipp" id="sb-tipp"[^>]*aria-label="Tooltips"[^>]*>Tooltips<\/button>/.test(navT.innerHTML));
+  ok('Tooltips: ohne gespeicherte Wahl sind sie an (aria-pressed=true)',
+    store.tooltipsAn() === true && AX.tooltipsAnzeigen() === true
+    && knopfT.getAttribute('aria-pressed') === 'true');
+  knopfT.dispatch('click');
+  ok('Tooltips: ein Klick schaltet aus, gespeichert und sofort wirksam',
+    globalThis.localStorage.getItem('sembla:ui:tooltips') === 'aus'
+    && AX.tooltipsAnzeigen() === false && knopfT.getAttribute('aria-pressed') === 'false');
+  delete document._e['sb-tipp'];            // im Browser legt innerHTML den Knopf neu an
+  mountNavbar(1);
+  ok('Tooltips: die Wahl gilt beim naechsten Seitenaufruf weiter (suite-weit)',
+    AX.tooltipsAnzeigen() === false && $('sb-tipp').getAttribute('aria-pressed') === 'false');
+  $('sb-tipp').dispatch('click');
+  ok('Tooltips: erneuter Klick schaltet wieder an und entfernt den Schluessel',
+    globalThis.localStorage.getItem('sembla:ui:tooltips') === null && AX.tooltipsAnzeigen() === true);
+
+  store.setzeTooltipsAn(false);
+  const stand = () => JSON.stringify([...globalThis.localStorage.m]);
+  const schreibVorher = stand();
+  delete document._e['sb-tipp'];
+  mountNavbar(8);
+  ok('Tooltips: auf Modul 8 gibt es KEINEN Schalter (die Seite schreibt nichts)',
+    !/sb-tipp/.test(navT.innerHTML));
+  ok('Tooltips: Modul 8 liest die gespeicherte Wahl nur und schreibt sie nicht',
+    AX.tooltipsAnzeigen() === false && stand() === schreibVorher
+    && globalThis.localStorage.getItem('sembla:ui:tooltips') === 'aus');
+
+  store.setzeTooltipsAn(true);
+  AX.tooltipsAnzeigen(true);
+  document.querySelector = altTipQuery;
+  globalThis.localStorage = altTipStorage;
+}
+
 // --- 13) #98/#107: gesammelte Zeichnungs-PDFs je Geschoss -----------------
 // Geprueft wird der ECHTE Bedienweg der Startseite: der ZENTRALE Exportdialog des
 // Projekts (#107 — die frueher eigene Schaltflaeche „Zeichnungen als PDF" gibt es nicht

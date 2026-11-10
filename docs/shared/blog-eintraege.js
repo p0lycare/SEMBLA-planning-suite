@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261110-02",
+    datum: "2026-11-10",
+    typ: "feature",
+    issue: 144,
+    titel: "Tooltips erscheinen erst nach 2 s Verweilen und lassen sich in der Kopfleiste abschalten",
+    testbitte: "In Modul 1 über die Spannachsen-Knöpfe fahren: kein Kasten verdeckt sie; erst 2 s Stillhalten zeigt ihn. "
+      + "Knopf „Tooltips“ oben rechts schaltet sie aus, auch nach Seitenwechsel",
+  },
+  {
     id: "chg-20261110-01",
     datum: "2026-11-10",
     typ: "feature",

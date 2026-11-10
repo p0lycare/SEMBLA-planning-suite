@@ -153,40 +153,111 @@ const AX = await import('../../docs/shared/sembla-ax.js');
 }
 
 // --- (b) Tooltip ----------------------------------------------------------
+//
+// Mit FAKE-TIMERN: die Hover-Verzoegerung (TIP_HOVER_MS = 2 s) und die Nachlaufzeit
+// (TIP_VERZUG_MS) werden vorgespult statt abgewartet — der Test bleibt schnell und
+// deterministisch.
 {
+  const uhr = { jetzt: 0, n: 0, t: new Map() };
+  const echt = { st: globalThis.setTimeout, ct: globalThis.clearTimeout };
+  globalThis.setTimeout = (f, ms) => { const id = ++uhr.n; uhr.t.set(id, { f, bis: uhr.jetzt + (ms || 0) }); return id; };
+  globalThis.clearTimeout = (id) => { uhr.t.delete(id); };
+  const spule = (ms) => {
+    const ziel = uhr.jetzt + ms;
+    for (;;) {
+      let nx = null;
+      for (const [id, e] of uhr.t) if (e.bis <= ziel && (!nx || e.bis < nx[1].bis)) nx = [id, e];
+      if (!nx) break;
+      uhr.t.delete(nx[0]); uhr.jetzt = nx[1].bis; nx[1].f();
+    }
+    uhr.jetzt = ziel;
+  };
+
   const tip = AX.tooltips({ dokument: dok });
   const knopf = dok.createElement('button');
   dok.body.appendChild(knopf);
   const bid = AX.beschreibe(knopf, 'Öffnet den Layout-Editor dieses Geschosses.');
+  const nachbar = dok.createElement('button');
+  dok.body.appendChild(nachbar);
+  AX.beschreibe(nachbar, 'Dreht die Wand um 90°.');
+
+  ok('die Hover-Verzoegerung ist eine benannte Konstante von 2 s', AX.TIP_HOVER_MS === 2000);
 
   knopf.dispatch('pointerover');
   const kasten = dok.getElementById(AX.TIP_ID);
-  ok('Hover zeigt den Tooltip',
-    kasten && kasten.hidden === false && kasten.textContent === 'Öffnet den Layout-Editor dieses Geschosses.');
-  ok('der Tooltipkasten traegt role="tooltip"', kasten.getAttribute('role') === 'tooltip');
+  ok('Hover zeigt den Tooltip NICHT sofort', !kasten || kasten.hidden === true);
+  spule(AX.TIP_HOVER_MS - 1);
+  ok('… auch kurz vor Ablauf der Verweilzeit noch nicht', !dok.getElementById(AX.TIP_ID) || dok.getElementById(AX.TIP_ID).hidden === true);
+  knopf.dispatch('pointerover');            // erneutes Ereignis am selben Ausloeser
+  spule(1);
+  const k = dok.getElementById(AX.TIP_ID);
+  ok('nach 2 s ruhigem Verweilen erscheint der Tooltip (ein erneutes pointerover startet nicht neu)',
+    k && k.hidden === false && k.textContent === 'Öffnet den Layout-Editor dieses Geschosses.');
+  ok('der Tooltipkasten traegt role="tooltip"', k.getAttribute('role') === 'tooltip');
   ok('gezeigt wird GENAU der Text, der auch die Beschreibung ist',
-    kasten.textContent === dok.getElementById(bid).textContent);
+    k.textContent === dok.getElementById(bid).textContent);
 
   tip.verstecke();
-  ok('verstecken blendet den Kasten aus', kasten.hidden === true);
+  ok('verstecken blendet den Kasten aus', k.hidden === true);
 
+  // Vorher verlassen: kein Kasten.
+  knopf.dispatch('pointerover');
+  spule(1500);
+  knopf.dispatch('pointerout');
+  spule(AX.TIP_HOVER_MS * 2);
+  ok('verlaesst die Maus den Ausloeser vor Ablauf, erscheint KEIN Kasten', k.hidden === true);
+
+  // Wechsel zum Nachbarn bei offenem Kasten: alter sofort zu, Nachbar wartet erneut 2 s.
+  knopf.dispatch('pointerover');
+  spule(AX.TIP_HOVER_MS);
+  ok('Kasten am ersten Knopf offen', k.hidden === false && tip.ziel() === knopf);
+  knopf.dispatch('pointerout');
+  nachbar.dispatch('pointerover');
+  ok('beim Wechsel zum Nachbarn geht der alte Kasten SOFORT zu', k.hidden === true && tip.ziel() === null);
+  spule(AX.TIP_HOVER_MS - 1);
+  ok('… und der Nachbar wartet wieder die volle Verweilzeit', k.hidden === true);
+  spule(1);
+  ok('nach 2 s am Nachbarn erscheint dessen Kasten',
+    k.hidden === false && tip.ziel() === nachbar && k.textContent === 'Dreht die Wand um 90°.');
+  tip.verstecke();
+
+  // Tastaturfokus: sofort.
+  knopf.dispatch('keydown', { key: 'Tab' });
   knopf.dispatch('focusin');
-  ok('auch TASTATURFOKUS zeigt den Tooltip (nicht nur Hover)', kasten.hidden === false);
+  ok('TASTATURFOKUS zeigt den Tooltip SOFORT (Barrierefreiheit)', k.hidden === false && tip.ziel() === knopf);
 
-  dok.addEventListener('keydown', () => {});
   knopf.dispatch('keydown', { key: 'Escape' });
-  ok('Escape schliesst den Tooltip', kasten.hidden === true);
+  ok('Escape schliesst den Tooltip', k.hidden === true);
+
+  // Escape bricht auch einen wartenden Hover ab.
+  knopf.dispatch('pointerover');
+  knopf.dispatch('keydown', { key: 'Escape' });
+  spule(AX.TIP_HOVER_MS);
+  ok('Escape bricht auch einen noch wartenden Hover ab', k.hidden === true);
+  knopf.dispatch('pointerout');
+
+  // Klickfokus ist kein Tastaturfokus: der Klick zeigt nichts sofort.
+  knopf.dispatch('pointerover');
+  knopf.dispatch('pointerdown');
+  knopf.dispatch('focusin');
+  ok('ein Fokus durch KLICK zeigt den Kasten nicht sofort', k.hidden === true);
+  spule(AX.TIP_HOVER_MS);
+  ok('… der Hover-Weg zeigt ihn nach der Verweilzeit', k.hidden === false);
+  knopf.dispatch('focusout');
+  knopf.dispatch('pointerout');
+  spule(AX.TIP_VERZUG_MS + 1);
 
   // Lesbar beim Ueberfahren: pointerout blendet NICHT sofort aus.
   knopf.dispatch('pointerover');
+  spule(AX.TIP_HOVER_MS);
   knopf.dispatch('pointerout');
-  ok('pointerout blendet den Tooltip nicht sofort weg (er bleibt erreichbar)', kasten.hidden === false);
-  kasten.dispatch('pointerover');            // Maus faehrt in den Kasten
-  await new Promise((r) => setTimeout(r, AX.TIP_VERZUG_MS + 40));
-  ok('die Maus im Kasten haelt ihn offen', kasten.hidden === false);
-  kasten.dispatch('pointerout');
-  await new Promise((r) => setTimeout(r, AX.TIP_VERZUG_MS + 40));
-  ok('nach dem Verlassen des Kastens schliesst er von selbst', kasten.hidden === true);
+  ok('pointerout blendet den Tooltip nicht sofort weg (er bleibt erreichbar)', k.hidden === false);
+  k.dispatch('pointerover');                 // Maus faehrt in den Kasten
+  spule(AX.TIP_VERZUG_MS + 40);
+  ok('die Maus im Kasten haelt ihn offen', k.hidden === false);
+  k.dispatch('pointerout');
+  spule(AX.TIP_VERZUG_MS + 40);
+  ok('nach dem Verlassen des Kastens schliesst er von selbst', k.hidden === true);
 
   // Die Beschreibung bleibt OHNE Hover verfuegbar — das ist der Kern von #144.
   ok('die Beschreibung haengt dauerhaft am Element, nicht nur waehrend des Hoverns',
@@ -195,7 +266,34 @@ const AX = await import('../../docs/shared/sembla-ax.js');
   const ohne = dok.createElement('button');
   dok.body.appendChild(ohne);
   ohne.dispatch('pointerover');
-  ok('ein Element ohne Beschreibung zeigt keinen Tooltip', kasten.hidden === true);
+  spule(AX.TIP_HOVER_MS);
+  ok('ein Element ohne Beschreibung zeigt keinen Tooltip', k.hidden === true);
+  ohne.dispatch('pointerout');
+
+  // Suite-weiter Schalter: aus = kein Kasten, Beschreibung bleibt.
+  ok('Tooltips sind standardmaessig an', AX.tooltipsAnzeigen() === true);
+  knopf.dispatch('keydown', { key: 'Tab' });
+  knopf.dispatch('focusin');
+  ok('(Kasten vor dem Abschalten offen)', k.hidden === false);
+  ok('abschalten liefert den neuen Zustand', AX.tooltipsAnzeigen(false) === false);
+  ok('abschalten schliesst einen offenen Kasten', k.hidden === true);
+  knopf.dispatch('focusout');
+  knopf.dispatch('focusin');
+  ok('abgeschaltet: Fokus zeigt keinen Kasten', k.hidden === true);
+  knopf.dispatch('pointerover');
+  spule(AX.TIP_HOVER_MS * 2);
+  ok('abgeschaltet: Hover zeigt keinen Kasten', k.hidden === true);
+  knopf.dispatch('pointerout');
+  ok('abgeschaltet: die Beschreibung bleibt per aria-describedby erhalten',
+    knopf.getAttribute('aria-describedby') === bid && dok.getElementById(bid).textContent.length > 0);
+  AX.tooltipsAnzeigen(true);
+  knopf.dispatch('pointerover');
+  spule(AX.TIP_HOVER_MS);
+  ok('wieder eingeschaltet: Hover zeigt nach der Verweilzeit', k.hidden === false);
+  tip.verstecke();
+  knopf.dispatch('pointerout');
+
+  globalThis.setTimeout = echt.st; globalThis.clearTimeout = echt.ct;
 }
 
 // --- (c) Modaler Dialog ---------------------------------------------------

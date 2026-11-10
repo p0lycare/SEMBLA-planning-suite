@@ -1329,7 +1329,11 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      `setzeKommentar`, [P-20] — dieselbe Kennung, gemeinsame Prüfung `_pruefeKennung`),
      Import/Export).
    - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–10, aktiver Pfad **Projekt · Geschoss · Wand**
-     und die nach [L-10] überhaupt aktivierbare Wandauswahl).
+     und die nach [L-10] überhaupt aktivierbare Wandauswahl) und der suite-weite Schalter **„Tooltips"** (an/aus,
+     Bedienvorliebe `sembla:ui:tooltips` über `store.tooltipsAn`/`setzeTooltipsAn`, keine
+     Planungsdaten). Der sichtbare Kasten (`sembla-ax.js`) erscheint bei Hover erst nach
+     `TIP_HOVER_MS` = 2 s, bei Tastaturfokus sofort; `aria-describedby` bleibt immer. Auf
+     **Modul 8** fehlt der Schalter (die Seite schreibt nichts), die Wahl wird dort nur gelesen.
    - `sembla-blog.js` — **Änderungsliste „Was ist neu?"** (Modul 8): Validator, Karten-HTML,
      Deep-Link-Anker und der **eine Textwächter** `pruefeText`/`VERBOTEN`, den auch der
      Umsetzungsplan für seine Prosa benutzt. Seit #55 **ohne jeden GitHub-Pfad** (kein Fetch,

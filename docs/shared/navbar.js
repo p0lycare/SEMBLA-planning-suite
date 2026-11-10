@@ -69,6 +69,10 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Hel
          padding:4px 8px;background:rgba(255,255,255,.05);border-radius:8px}
 .sb-pfad b{color:#dbe6f2;font-weight:600}
 .sb-pfad .k{color:#7fa9ef}
+.sb-tipp{background:rgba(255,255,255,.08);color:#dbe6f2;border:1px solid #2b3d50;border-radius:7px;
+         padding:4px 8px;font-size:12px;cursor:pointer;white-space:nowrap}
+.sb-tipp[aria-pressed="false"]{color:#9fb0c0;text-decoration:line-through}
+.sb-tipp:focus-visible{outline:2px solid #fff;outline-offset:2px}
 `;
 
 let _unsub = null;
@@ -146,6 +150,15 @@ export function mountNavbar(activeIndex = 0) {
   // Landmarke benennen. Defensiv, weil die Smoke-Tests die Kopfleiste unter einem
   // minimalen DOM-Double mounten — fehlt `setAttribute`, bleibt alles Uebrige gueltig.
   if (typeof nav.setAttribute === "function") nav.setAttribute("aria-label", "Module und aktiver Planungspfad");
+  // Schalter „Tooltips" (suite-weit, gespeichert ueber storage.js). Aus heisst: kein
+  // sichtbarer Kasten — die Beschreibungen per aria-describedby bleiben.
+  // Modul 8 ist streng statisch und SCHREIBT nichts: dort gibt es den Schalter nicht;
+  // die gespeicherte Wahl wird nur gelesen (wie die uebrigen Zeiger der Kopfleiste).
+  const mitSchalter = activeIndex !== 8;
+  AX.tooltipsAnzeigen(store.tooltipsAn());
+  const tippB = AX.benennung("Tooltips", "Blendet die Erklärkästen beim Überfahren und "
+    + "Fokussieren ein oder aus — für alle Seiten der Suite. Die Erklärungen für "
+    + "Hilfsmittel bleiben erhalten.");
   const markeB = AX.benennung("SEMBLA Planungs-Suite, zur Übersicht",
     "Öffnet Modul 0 — Projekte, Geschosse und Wände.");
   nav.innerHTML =
@@ -154,12 +167,25 @@ export function mountNavbar(activeIndex = 0) {
     + `<div class="sb-tabs">${tabs.join("")}</div>`
     + beschreibungen.join("")
     + `<div class="sb-pfad" id="sb-pfad" role="group" aria-label="Aktiver Pfad"></div>`
-    + `<div class="sb-active" id="sb-active"></div>`;
+    + `<div class="sb-active" id="sb-active"></div>`
+    + (mitSchalter ? `<button type="button" class="sb-tipp" id="sb-tipp" ${tippB.attrs}>Tooltips</button>`
+      + tippB.html : "");
+
+  const tipp = mitSchalter ? document.getElementById("sb-tipp") : null;
+  if (tipp && typeof tipp.addEventListener === "function") {
+    tipp.addEventListener("click", () => store.setzeTooltipsAn(!AX.tooltipsAnzeigen()));
+  }
+  _renderTipp();
 
   const abmelden = _renderAktiv();
   // Doppel-Mount vermeiden
   if (_unsub) _unsub();
-  _unsub = store.abonniere(() => _renderAktiv());
+  _unsub = store.abonniere(() => {
+    // Auch Aenderungen aus anderen Tabs: die Wahl gilt suite-weit.
+    AX.tooltipsAnzeigen(store.tooltipsAn());
+    _renderTipp();
+    _renderAktiv();
+  });
 
   return abmelden;
 }
@@ -220,6 +246,12 @@ function _renderAktiv() {
     }
   });
   return () => {};
+}
+
+/** Zustand des Tooltip-Schalters anzeigen (aria-pressed traegt ihn, nicht nur die Farbe). */
+function _renderTipp() {
+  const t = document.getElementById("sb-tipp");
+  if (t && typeof t.setAttribute === "function") t.setAttribute("aria-pressed", String(AX.tooltipsAnzeigen()));
 }
 
 /** Aktiver Pfad Projekt · Geschoss · Wand — reine Anzeige der drei Zeiger ([L-10]). */

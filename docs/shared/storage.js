@@ -86,6 +86,7 @@ const K_PROJEKTE = "sembla:projekte";
 const K_AKTIV_PRJ = "sembla:aktiv:projekt";
 const K_AKTIV_GEB = "sembla:aktiv:gebaeude";
 const K_AKTIV_GS = "sembla:aktiv:geschoss";
+const K_UI_TOOLTIPS = "sembla:ui:tooltips";  // Bedienvorliebe (Tooltips an/aus), keine Planungsdaten
 
 /** Aktuelle Schema-Version des INTERNEN localStorage-Stands. Aeltere Staende
  *  werden beim Laden einmalig migriert.
@@ -2276,6 +2277,25 @@ export function exportiereProjekt(id) {
 }
 
 // --- Benachrichtigung (Navbar / UI auffrischen) --------------------------
+
+// ---------------------------------------------------------------------------
+// Bedienvorliebe: sichtbare Tooltips an/aus (suite-weit, gepflegt in der Kopfleiste)
+// ---------------------------------------------------------------------------
+// Reine Bedieneinstellung dieses Browsers — KEINE Planungsdaten: nicht in `eingaben`,
+// nicht im Wandelement, nicht in Mappe oder Katalog, nicht im Export. Fehlt der
+// Schluessel, sind Tooltips an. Kein Schema-Sprung (es gibt nichts zu migrieren).
+
+/** Sind die sichtbaren Tooltips eingeschaltet? (Standard: ja) */
+export function tooltipsAn() {
+  try { return localStorage.getItem(K_UI_TOOLTIPS) !== "aus"; } catch { return true; }
+}
+
+/** Sichtbare Tooltips ein-/ausschalten. Eingeschaltet = Schluessel entfernt (Standard). */
+export function setzeTooltipsAn(an) {
+  if (an) localStorage.removeItem(K_UI_TOOLTIPS);
+  else localStorage.setItem(K_UI_TOOLTIPS, "aus");
+  _benachrichtige();
+}
 
 /** @type {Set<() => void>} */
 const _hoerer = new Set();

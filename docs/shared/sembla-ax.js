@@ -12,8 +12,10 @@
  *      Tastaturfokus und nie als Beschreibung neben einem eigenen Namen.
  *
  *  (b) **Wie erscheint derselbe Text sichtbar?**
- *      Als Tooltip bei Maus-Hover UND bei Tastaturfokus, schliessbar mit Escape,
- *      lesbar auch beim Ueberfahren mit der Maus (er blendet nicht sofort weg).
+ *      Als Tooltip bei Maus-Hover (erst nach `TIP_HOVER_MS` ruhigem Verweilen) UND
+ *      sofort bei Tastaturfokus, schliessbar mit Escape, lesbar auch beim Ueberfahren
+ *      mit der Maus (er blendet nicht sofort weg). Suite-weit abschaltbar
+ *      (`tooltipsAnzeigen`) — die Beschreibung im Accessibility Tree bleibt dabei.
  *      Der Tooltip ist reine SICHTBARMACHUNG derselben Beschreibung — er ist nie die
  *      einzige Quelle einer Pflichtinformation.
  *
@@ -62,6 +64,14 @@ export const FOKUSSIERBAR = [
 
 /** Verzoegerung, mit der ein Tooltip nach dem Verlassen ausblendet (ms). */
 export const TIP_VERZUG_MS = 250;
+
+/**
+ * Verweildauer der Maus auf einem Ausloeser, bevor sein Tooltip erscheint (ms).
+ * Sofort erscheinende Kaesten ueberdeckten beim blossen Ueberfahren die Knoepfe darunter
+ * (z. B. den Block der Spannachsen-Knoepfe in Modul 1). Tastaturfokus zeigt weiterhin
+ * SOFORT — dort ist der Kasten die sichtbare Antwort auf eine bewusste Bewegung.
+ */
+export const TIP_HOVER_MS = 2000;
 
 /** Kennung des einen sichtbaren Tooltip-Kastens der Seite. */
 export const TIP_ID = 'ax-tip';
@@ -320,6 +330,37 @@ export function stilEinhaengen(dok) {
 let _tipInstalliert = false;
 let _tipZiel = null;
 let _tipTimer = null;
+/** Wartender Hover: Ausloeser und Timer bis zum Erscheinen (TIP_HOVER_MS). */
+let _tipHoverZiel = null;
+let _tipHoverTimer = null;
+/** Kam der naechste Fokus von einem Zeiger (Klick) statt von der Tastatur? */
+let _tipZeigerFokus = false;
+/** Suite-weiter Schalter: false = kein sichtbarer Kasten (aria-describedby bleibt). */
+let _tipAn = true;
+
+/**
+ * Den sichtbaren Tooltip ein- oder ausschalten. Gespeichert wird hier NICHTS — die
+ * Einstellung haelt die Kopfleiste (`navbar.js`) ueber `storage.js`. Aus heisst: der
+ * Kasten erscheint weder bei Hover noch bei Fokus; die Beschreibung bleibt per
+ * `aria-describedby` im Accessibility Tree und damit fuer Hilfsmittel erhalten.
+ * @param {boolean} [an] ohne Angabe nur lesen
+ * @returns {boolean} der dann geltende Zustand
+ */
+export function tooltipsAnzeigen(an) {
+  if (an !== undefined) {
+    _tipAn = !!an;
+    if (!_tipAn) {
+      const d = typeof document !== 'undefined' ? document : null;
+      _tipVerstecke(d);
+    }
+  }
+  return _tipAn;
+}
+
+function _tipHoverAbbrechen() {
+  if (_tipHoverTimer != null) { clearTimeout(_tipHoverTimer); _tipHoverTimer = null; }
+  _tipHoverZiel = null;
+}
 
 /** Den Beschreibungstext eines Ausloesers holen — immer aus DEMSELBEN Textknoten. */
 function _tipText(el, d) {
@@ -333,9 +374,13 @@ function _tipText(el, d) {
 /**
  * Die Tooltip-Schicht der Seite installieren — EINMAL je Seite.
  *
- * Gezeigt wird bei `pointerover` UND `focusin`, geschlossen bei `pointerout`/`focusout`
- * (mit kurzer Nachlaufzeit, damit der Kasten mit der Maus erreichbar bleibt) sowie bei
- * Escape. Der Kasten traegt `role="tooltip"`; die Beschreibung selbst haengt dauerhaft
+ * Gezeigt wird bei `pointerover` erst nach `TIP_HOVER_MS` ruhigem Verweilen (verlaesst
+ * die Maus den Ausloeser vorher, erscheint nichts; beim Wechsel zum Nachbarn schliesst
+ * der alte Kasten sofort und der Nachbar wartet erneut) und bei `focusin` von der
+ * Tastatur SOFORT. Ein Fokus, den ein Klick ausloest, ist kein Tastaturfokus und zeigt
+ * nichts sofort — sonst ueberdeckte jeder Klick wieder die Knoepfe darunter.
+ * Geschlossen wird bei `pointerout`/`focusout` (mit kurzer Nachlaufzeit, damit der
+ * Kasten mit der Maus erreichbar bleibt) sowie bei Escape. Der Kasten traegt `role="tooltip"`; die Beschreibung selbst haengt dauerhaft
  * ueber `aria-describedby` am Bedienelement und ist damit auch OHNE Hover verfuegbar.
  *
  * @param {object} [opts] @param {any} [opts.dokument]
@@ -359,12 +404,45 @@ export function tooltips(opts) {
     if (typeof t.closest === 'function') return t.closest('[data-ax-tip]');
     return (typeof t.getAttribute === 'function' && t.getAttribute('data-ax-tip')) ? t : null;
   };
-  d.addEventListener('pointerover', (ev) => { const a = ausloeser(ev); if (a) _tipZeige(a, d); });
-  d.addEventListener('focusin', (ev) => { const a = ausloeser(ev); if (a) _tipZeige(a, d); });
+  // Bewegung INNERHALB desselben Ausloesers (auf ein Kindelement) ist kein Verlassen.
+  const innen = (a, ev) => {
+    const r = ev && ev.relatedTarget;
+    return !!(r && typeof a.contains === 'function' && a.contains(r));
+  };
+  d.addEventListener('pointerover', (ev) => {
+    const a = ausloeser(ev);
+    if (!a || !_tipAn) return;
+    if (a === _tipZiel) {                          // eigener Kasten schon offen: offen halten
+      if (_tipTimer != null) { clearTimeout(_tipTimer); _tipTimer = null; }
+      return;
+    }
+    if (a === _tipHoverZiel) return;               // wartet schon — nicht neu anfangen
+    _tipVerstecke(d);                              // Nachbar: alter Kasten sofort zu
+    _tipHoverZiel = a;
+    _tipHoverTimer = setTimeout(() => {
+      _tipHoverTimer = null; _tipHoverZiel = null;
+      _tipZeige(a, d);
+    }, TIP_HOVER_MS);
+  });
+  d.addEventListener('pointerdown', () => { _tipZeigerFokus = true; }, true);
+  d.addEventListener('focusin', (ev) => {
+    const a = ausloeser(ev);
+    if (!a || _tipZeigerFokus) return;             // Klickfokus: der Hover-Weg entscheidet
+    _tipHoverAbbrechen();
+    _tipZeige(a, d);
+  });
   // Nachlaufzeit: der Kasten bleibt lesbar, solange die Maus zu ihm unterwegs ist.
-  d.addEventListener('pointerout', (ev) => { if (ausloeser(ev)) _tipSpaeterVerstecken(d); });
-  d.addEventListener('focusout', (ev) => { if (ausloeser(ev)) _tipVerstecke(d); });
-  d.addEventListener('keydown', (ev) => { if (ev && ev.key === 'Escape') _tipVerstecke(d); });
+  d.addEventListener('pointerout', (ev) => {
+    const a = ausloeser(ev);
+    if (!a || innen(a, ev)) return;
+    if (a === _tipHoverZiel) _tipHoverAbbrechen(); // vor Ablauf verlassen: kein Kasten
+    if (a === _tipZiel) _tipSpaeterVerstecken(d);
+  });
+  d.addEventListener('focusout', (ev) => { if (ausloeser(ev) && ausloeser(ev) === _tipZiel) _tipVerstecke(d); });
+  d.addEventListener('keydown', (ev) => {
+    _tipZeigerFokus = false;
+    if (ev && ev.key === 'Escape') _tipVerstecke(d);
+  });
   return steuerung;
 }
 
@@ -387,6 +465,7 @@ function _tipKasten(d) {
 }
 
 function _tipZeige(el, d) {
+  if (!_tipAn) return;
   const text = _tipText(el, d);
   if (!text) return;
   const k = _tipKasten(d);
@@ -409,6 +488,7 @@ function _tipSpaeterVerstecken(d) {
 
 function _tipVerstecke(d) {
   if (_tipTimer != null) { clearTimeout(_tipTimer); _tipTimer = null; }
+  _tipHoverAbbrechen();
   _tipZiel = null;
   const k = d && typeof d.getElementById === 'function' ? d.getElementById(TIP_ID) : null;
   if (k) k.hidden = true;
@@ -417,8 +497,11 @@ function _tipVerstecke(d) {
 /** Nur fuer Tests: die installierte Tooltip-Schicht zuruecksetzen. */
 export function _tooltipsZuruecksetzen() {
   if (_tipTimer != null) { clearTimeout(_tipTimer); _tipTimer = null; }
+  _tipHoverAbbrechen();
   _tipInstalliert = false;
   _tipZiel = null;
+  _tipZeigerFokus = false;
+  _tipAn = true;
 }
 
 // =====================================================================
