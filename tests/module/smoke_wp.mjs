@@ -1457,6 +1457,38 @@ WP.setManualCols([1,3,5,8,11,13,15]);
 }
 
 // ---------------------------------------------------------------------------------------------
+// [A-26] Kurze Wand (Fassung 2026-11-10, Felix Bauroth 06./10.11.): DA 3 gilt erst ab 3 Feldern.
+// Die 250-mm-Wand bekommt genau EINEN Anschluss je Wand in Feld 1, und Modul 1 zeigt den
+// Pruefhinweis im Wortlaut des Rechenkerns — kein Randbefund „Feld 1 unzulaessig".
+// ---------------------------------------------------------------------------------------------
+WP.setManualCols(null); WP.zpAuto(); WP.agAuto(); WP.dcAuto(); WP.setDcEdit(false);
+setzeLaenge(250); document.getElementById('hgt').value='2600';
+document.getElementById('modus').value='auto'; WP.run();
+{
+  const we=WP.RESULT.wandelement, warns=document.getElementById('warns').textContent;
+  ok('[A-26] 250-mm-Wand: genau ein Deckenanschluss, in Feld 1 am Wandanfang',
+    we.N_grid===2 && JSON.stringify(WP.deckenanschlusspunkte.map(p=>p.k))==='[0]'
+    && WP.deckenanschlusspunkte[0].art==='auto');
+  ok('[A-26] 250-mm-Wand: Pruefhinweis mit Regel und Grund im Wandelement',
+    (we.validation.deckenanschluss_kurzwand||[]).length===1
+    && we.validation.deckenanschluss_kurzwand[0].regel==='A-26'
+    && we.validation.deckenanschluss_kurzwand[0].grund==='feld_1'
+    && !('deckenanschluss_rand' in we.validation));
+  ok('[A-26] 250-mm-Wand: Modul 1 zeigt den Pruefhinweis, keinen Randbefund',
+    warns.includes('Deckenanschluss [A-26]: '+we.validation.deckenanschluss_kurzwand[0].text)
+    && !/unzulässig|kein Anschluss in Feld 2–3/.test(warns));
+  ok('[A-26] 250-mm-Wand: der Editorhinweis nennt die Kurzwand-Regel',
+    /genau einer je Wand in Feld 1/.test(document.getElementById('dcHinweis').textContent));
+  ok('[A-26] 250-mm-Wand: genau eine Baugruppe Deckenanschluss in der Stueckliste',
+    WP.deckenanschlusspunkte.length===1 && !('deckenanschluss_grid' in store.aktivesWandelement().prestress));
+}
+setzeLaenge(375); WP.run();
+ok('[A-26] ab 3 Feldern kein Kurzwand-Hinweis, Anschluss nicht in Feld 1',
+  !('deckenanschluss_kurzwand' in WP.RESULT.wandelement.validation)
+  && JSON.stringify(WP.deckenanschlusspunkte.map(p=>p.k))==='[1]'
+  && !/Kurze Wand/.test(document.getElementById('warns').textContent));
+
+// ---------------------------------------------------------------------------------------------
 // Issue #138 / [A-28]…[A-30]: Auswahlmodus „Bodenblech aussparen" in Modul 1.
 // Gefahren wird derselbe ECHTE Pfad OHNE MAUS wie bei #95/#96: Modus an, Rasterfelder ueber den
 // delegierten Klickhoerer der Wandansicht an- und abwaehlen, zuruecksetzen — und nach jedem

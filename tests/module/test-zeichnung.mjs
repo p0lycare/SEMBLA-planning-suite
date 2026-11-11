@@ -1312,6 +1312,15 @@ console.log("\n[Z-5]/[Z-6] Zuschnittkonflikte stehen auf dem Blatt");
   ok("ohne Konflikt kein Mangelblock", Z.konfliktZeilen(WG).length === 0
     && Z.maengelHtml(WG) === "" && !Z.blattHtml(WG, eingaben, {}).html.includes(Z.MANGEL_TITEL));
 
+  // [A-26] Kurzwand-Pruefhinweis (Fassung 2026-11-10) gehoert in Modul 1, NICHT aufs Blatt:
+  // weder Mangelblock noch Blatt-HTML noch SVG-Datei tragen ihn.
+  const WK = buildWall("IW-kurz", 250, 2600, [], null, { max_span_grid: 3 });
+  const kurzText = WK.validation.deckenanschluss_kurzwand[0].text;
+  ok("[A-26] Kurzwand-Hinweis steht nicht auf dem Zeichnungsblatt",
+    !Z.blattHtml(WK, eingaben, {}).html.includes(kurzText)
+    && !Z.zeichnungSvgDatei(WK, eingaben, {}).includes("Kurze Wand")
+    && !zeichnungHtml(WK, eingaben, {}).includes("Kurze Wand"));
+
   // Unbestimmter Zuschnitt: nichts zeichnen und nichts erfinden.
   const WL2 = buildWall("IW-lang", 2000, 2600, [], null,
     { rod_lengths_mm: [1000], rod_rest_mm: 5000, rod_overhang_mm: 10 });

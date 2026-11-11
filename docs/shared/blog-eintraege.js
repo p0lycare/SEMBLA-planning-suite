@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261111-01",
+    datum: "2026-11-11",
+    typ: "feature",
+    issue: 124,
+    titel: "Deckenanschluss: eine 250-mm-Wand bekommt genau einen Anschluss in Feld 1 samt Prüfhinweis",
+    testbitte: "In Modul 1 eine 250-mm-Wand öffnen: genau ein rotes Z links, Warnung „Kurze Wand (2 Felder, 250 mm) …“; "
+      + "Wände ab 375 mm unverändert, auf dem Zeichnungsblatt steht der Hinweis nicht",
+  },
+  {
     id: "chg-20261110-03",
     datum: "2026-11-10",
     typ: "feature",

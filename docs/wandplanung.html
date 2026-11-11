@@ -207,7 +207,8 @@
       <!-- [A-26]/[A-27]/#95: Anschlusspunkte liegen IMMER auf einer Spannachse; nicht jede
            Spannachse ist ein Anschlusspunkt. Ohne eigene Auswahl verteilt der Rechenkern sie
            deterministisch — je Wandende in Feld 2 oder 3, nie in Feld 1, dazwischen höchstens
-           1125 mm Abstand ([A-26], Fassung vom 2026-10-29); dieses Ergebnis wird NICHT gespeichert. Erst eine hier getroffene
+           1125 mm Abstand ([A-26], Fassung vom 2026-10-29); eine Wand unter 3 Feldern (250 mm) bekommt
+           genau EINEN Anschluss in Feld 1 samt Prüfhinweis (Fassung vom 2026-11-10); dieses Ergebnis wird NICHT gespeichert. Erst eine hier getroffene
            Wahl ist ein gespeicherter Override — sie SPERRT die Verteilung vollständig, bis
            „Zurück zu Auto“ sie zurücknimmt ([A-27]). Ausdrücklich KEINE Statik: die Kraftübergabe
            an den Stahlbau in Modul 3 bleibt unberührt. -->
@@ -773,6 +774,11 @@ function run(){
   // Befund aus dem Rechenkern (beide Pfade) — benannt, nichts verschoben, keine Achse erfunden.
   const dcr=vv.deckenanschluss_rand||[];
   if(dcr.length) warns.push('⚠ Deckenanschluss [A-26]: '+dcr.map(dcRandText).join('; ')+'.');
+  // [A-26] Kurze Wand (unter 3 Feldern, Fassung 2026-11-10): DA 3 gilt nicht, genau EIN Anschluss
+  // je Wand in Feld 1 — als Prüfhinweis im Wortlaut des Rechenkerns (selbstbeschreibend, nicht
+  // neu formuliert). Nur hier in Modul 1, nicht auf dem Zeichnungsblatt.
+  const dck=vv.deckenanschluss_kurzwand||[];
+  if(dck.length) warns.push('⚠ Deckenanschluss [A-26]: '+dck.map(b=>b.text).join(' · ')+'.');
   // [A-26] Unerfüllbare 1125-mm-Vorgabe im Auto-Pfad: die Spannachsen selbst stehen zu weit.
   const dcl=vv.deckenanschluss_luecken||[];
   if(dcl.length) warns.push('⚠ Deckenanschluss [A-26]: '+dcl.length+' Abstand/Abstände über '
@@ -2324,6 +2330,9 @@ function renderDcHinweis(){
   el.textContent = manualDc
     ? 'Eigene Auswahl: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — gespeichert am '
       +'Wandelement; die automatische Verteilung ist gesperrt, es wird nichts aufgefüllt.'
+    : (RESULT.wandelement.validation.deckenanschluss_kurzwand||[]).length
+    ? 'Automatisch: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — kurze Wand unter 3 Feldern: '
+      +'genau einer je Wand in Feld 1 (DA 3 gilt erst ab 3 Feldern), nicht gespeichert.'
     : 'Automatisch verteilt: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — je Wandende '
       +'in Feld 2 oder 3 (nie Feld 1), dazwischen höchstens 1125 mm Abstand, nicht gespeichert.';
 }

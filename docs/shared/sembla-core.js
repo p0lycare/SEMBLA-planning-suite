@@ -33,6 +33,7 @@ export const AUSGLEICH_DICHTE_JE_M = 3;   // Zielpunktzahl je Meter Wandlaenge (
 export const AUSGLEICH_ACHSVERSATZ = 20;  // Abstand einer Auffuellung zur Spannachse ([A-23])
 export const DECKENANSCHLUSS_MAX_MM = 1125;  // groesster Abstand benachbarter Deckenanschluesse ([A-26])
 export const DECKENANSCHLUSS_RANDFELD = 3;   // spaetestens in diesem Feld vom Wandende, nie in Feld 1 ([A-26])
+export const DECKENANSCHLUSS_DA3_AB_FELDERN = 3;   // DA 3 (nie Feld 1) gilt erst ab dieser Rasterbreite ([A-26])
 
 export class SemblaError extends Error {}
 export class InvalidDimensionError extends SemblaError {}
@@ -1069,6 +1070,16 @@ export function normAusgleichspunkte(arr, lengthMm) {
 // weiter als 1125 mm auseinander, ebenso (`deckenanschlussLuecken`) — nie eine Achse erfunden
 // ([P-9]). Die Achsverteilung selbst wird hier weder gelesen noch beeinflusst — nur ihr Ergebnis.
 //
+// KURZE WAND (Fassung vom 2026-11-10, Felix Bauroth 06./10.11.): DA 3 („nie in Feld 1") gilt
+// erst ab DECKENANSCHLUSS_DA3_AB_FELDERN (3) Rasterfeldern. Eine kuerzere Wand (heute nur die
+// 250-mm-Wand, 2 Felder — darin ist JEDES Feld von einem Ende aus Feld 1) bekommt genau EINEN
+// Deckenanschluss je Wand (nicht je Wandende) in Feld 1, auf der Achse nach der Rangfolge oben:
+// kleinste Anschlusszahl (immer 1), dann die AEUSSERE Achse (kleinster Abstand zum naechsten
+// Wandende), bei Gleichstand der Wandanfang (kleinster Rasterindex). Dazu steht IMMER ein
+// Pruefhinweis in `validation.deckenanschluss_kurzwand` (`deckenanschlussKurzwand`) — mit Regel,
+// Grund und Klartext, damit ihn jede Oberflaeche ohne eigene Uebersetzung lesen kann. Die
+// Randbefunde (`deckenanschlussRand`) entfallen fuer solche Waende, weil DA 3 dort nicht gilt.
+//
 // Gerechnet wird bei JEDER Rechnung frisch. Das Ergebnis der Verteilung wird NICHT gespeichert
 // und NICHT als manueller Wert ausgegeben: gespeichert ist ausschliesslich ein ausdruecklich
 // gesetzter Override in `prestress.deckenanschluss_grid` ([A-27]).
@@ -1084,13 +1095,23 @@ export function normAusgleichspunkte(arr, lengthMm) {
  * jeweils die ENTFERNTESTE Achse gewaehlt, die von der zuletzt gesetzten aus noch innerhalb von
  * DECKENANSCHLUSS_MAX_MM liegt — die kleinstmoegliche Punktzahl, vollstaendig deterministisch.
  * Traegt kein Nachbar die Reichweite, wird die naechste Achse trotzdem gesetzt; die
- * Ueberschreitung meldet `deckenanschlussLuecken`. Ohne zulaessige Achse (Wand unter drei
- * Feldern, oder Achsen nur in Feld 1) entsteht KEIN Punkt — gemeldet, nicht erfunden.
+ * Ueberschreitung meldet `deckenanschlussLuecken`. Ohne zulaessige Achse (Achsen nur in
+ * Feld 1) entsteht KEIN Punkt — gemeldet, nicht erfunden. Eine Wand UNTER drei Feldern bekommt
+ * genau einen Punkt in Feld 1 (aeussere Achse, bei Gleichstand der Wandanfang), gemeldet von
+ * `deckenanschlussKurzwand`.
  * @param {number[]} [achsenK] Rasterindizes der Spannachsen (aufsteigend)
  * @param {number} [nGrid] Rasterbreite der Wand
  * @returns {number[]} gewaehlte Rasterindizes, aufsteigend
  */
 export function verteileDeckenanschluss(achsenK = [], nGrid = 0) {
+  // Kurze Wand (unter 3 Feldern): DA 3 gilt nicht — genau EIN Anschluss in Feld 1, aeussere
+  // Achse zuerst, bei Gleichstand der Wandanfang. Wand ab 3 Feldern: unveraendert (unten).
+  if (nGrid < DECKENANSCHLUSS_DA3_AB_FELDERN) {
+    const aussen = (k) => Math.min(k, nGrid - 1 - k);
+    const K = [...new Set(achsenK)].filter((k) => k >= 0 && k <= nGrid - 1)
+      .sort((a, b) => aussen(a) - aussen(b) || a - b);
+    return K.length ? [K[0]] : [];
+  }
   const Z = [...new Set(achsenK)].sort((a, b) => a - b).filter((k) => k >= 1 && k <= nGrid - 2);
   if (!Z.length) return [];
   const R = DECKENANSCHLUSS_RANDFELD;
@@ -1138,6 +1159,8 @@ function deckenanschlussKette(A) {
  * @returns {Array<{ende:"links"|"rechts",grund:string,k:number|null,feld:number|null}>}
  */
 export function deckenanschlussRand(punkteK = [], nGrid = 0) {
+  // DA 3 gilt erst ab drei Feldern — die kurze Wand meldet `deckenanschlussKurzwand`.
+  if (nGrid < DECKENANSCHLUSS_DA3_AB_FELDERN) return [];
   const P = [...new Set(punkteK)].sort((a, b) => a - b);
   const R = DECKENANSCHLUSS_RANDFELD;
   const befunde = [];
@@ -1151,6 +1174,40 @@ export function deckenanschlussRand(punkteK = [], nGrid = 0) {
     }
   }
   return befunde;
+}
+
+/**
+ * Pruefhinweis der KURZEN Wand ([A-26], Fassung 2026-11-10): unter
+ * DECKENANSCHLUSS_DA3_AB_FELDERN Feldern gilt DA 3 nicht, und es gibt genau EINEN Anschluss je
+ * Wand in Feld 1. Reine Funktion fuer BEIDE Pfade (Verteilung und Override). Fuer Waende ab drei
+ * Feldern immer leer. Der Eintrag ist bewusst SELBSTBESCHREIBEND (`regel`, `grund`, `text`),
+ * damit ihn jede Oberflaeche (Modul 1, Geschossplan) generisch zeigen kann:
+ *   `feld_1`           — genau ein Anschluss in Feld 1 (der Regelfall, zu pruefen),
+ *   `keine_spannachse` — die Wand traegt keine Spannachse, also keinen Anschluss,
+ *   `mehrere`          — ein Override setzt mehr als einen Anschluss (nichts wird entfernt).
+ * Die Punktliste wird dadurch NICHT veraendert.
+ * @param {number[]} [punkteK] Rasterindizes der Deckenanschlusspunkte
+ * @param {number} [nGrid] Rasterbreite der Wand
+ * @returns {Array<{regel:string,grund:string,laenge_grid:number,punkte:number[],text:string}>}
+ */
+export function deckenanschlussKurzwand(punkteK = [], nGrid = 0) {
+  if (nGrid >= DECKENANSCHLUSS_DA3_AB_FELDERN) return [];
+  const P = [...new Set(punkteK)].sort((a, b) => a - b);
+  const wand = `Kurze Wand (${nGrid} Felder, ${nGrid * GRID} mm)`;
+  let grund, text;
+  if (!P.length) {
+    grund = "keine_spannachse";
+    text = `${wand}: keine Spannachse für den Deckenanschluss – Anschluss prüfen`;
+  } else if (P.length === 1) {
+    grund = "feld_1";
+    text = `${wand}: ein Deckenanschluss je Wand in Feld 1 (Rasterachse ${P[0]}) – `
+      + `DA 3 gilt erst ab 3 Feldern; Anschluss prüfen`;
+  } else {
+    grund = "mehrere";
+    text = `${wand}: ${P.length} Deckenanschlüsse gesetzt (Rasterachsen ${P.join(", ")}) – `
+      + `vorgesehen ist genau einer je Wand; Auswahl prüfen`;
+  }
+  return [{ regel: "A-26", grund, laenge_grid: nGrid, punkte: P, text }];
 }
 
 /**
@@ -2235,6 +2292,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // LEERE Override-Liste ist die Aussage „kein Deckenanschluss an dieser Wand" und erzeugt
   // keinen Randbefund.
   const dcRand = (DC.punkte && !DC.punkte.length) ? [] : deckenanschlussRand(dcK, N);
+  // [A-26] Kurze Wand (unter 3 Feldern): Pruefhinweis in beiden Pfaden; die ausdruecklich leere
+  // Override-Liste ist auch hier die Aussage „kein Deckenanschluss" und bleibt ohne Hinweis.
+  const dcKurz = (DC.punkte && !DC.punkte.length) ? [] : deckenanschlussKurzwand(dcK, N);
 
   const bom = { i2: 0, i3: 0 };
   for (const c of courses) for (const s of c.stones) bom[s.type] += 1;
@@ -2334,6 +2394,10 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // [A-26]/[A-27] Randfeld-Befunde (Feld 1 belegt / kein Anschluss in Feld 2–3) — in beiden
       // Pfaden, benannt statt verschoben. Der Schluessel entsteht NUR im Befundfall.
       ...(dcRand.length ? { deckenanschluss_rand: dcRand } : {}),
+      // [A-26] Pruefhinweis der kurzen Wand (unter 3 Feldern, ein Anschluss in Feld 1) —
+      // selbstbeschreibend (regel/grund/text); der Schluessel entsteht NUR im Befundfall, Waende
+      // ab drei Feldern bleiben bit-gleich.
+      ...(dcKurz.length ? { deckenanschluss_kurzwand: dcKurz } : {}),
       // [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
       interlock_invalid_segments: interlockInvalidSegments,
       // [G-18] Sonderzuschnitte der Ausgleichslage — je Steintyp ein Eintrag mit dem REALEN

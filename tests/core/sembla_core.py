@@ -33,6 +33,7 @@ __all__ = [
     "norm_ausgleichspunkte",
     "DECKENANSCHLUSS_MAX_MM", "verteile_deckenanschluss", "norm_deckenanschluss",
     "deckenanschluss_luecken", "deckenanschluss_rand", "DECKENANSCHLUSS_RANDFELD",
+    "deckenanschluss_kurzwand", "DECKENANSCHLUSS_DA3_AB_FELDERN",
 ]
 
 # ---- Konstanten (bestaetigte Parameter) ----
@@ -59,6 +60,7 @@ AUSGLEICH_DICHTE_JE_M = 3   # Zielpunktzahl je Meter Wandlaenge ([A-20])
 AUSGLEICH_ACHSVERSATZ = 20  # mm Abstand einer Auffuellung zur Spannachse ([A-23])
 DECKENANSCHLUSS_MAX_MM = 1125  # groesster Abstand benachbarter Deckenanschluesse ([A-26])
 DECKENANSCHLUSS_RANDFELD = 3   # spaetestens in diesem Feld vom Wandende, nie in Feld 1 ([A-26])
+DECKENANSCHLUSS_DA3_AB_FELDERN = 3   # DA 3 (nie Feld 1) gilt erst ab dieser Rasterbreite ([A-26])
 
 
 # ---- Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]) ----
@@ -698,7 +700,9 @@ def norm_ausgleichspunkte(arr, length_mm):
 # Wandende (Feld 1 = aeusserstes). An jedem Ende ein Deckenanschluss spaetestens in Feld 3 und
 # nie in Feld 1 (aeusserste Achse in Feld 2–3), dazwischen hoechstens DECKENANSCHLUSS_MAX_MM
 # zwischen zwei benachbarten Punkten; Kandidat ist JEDE Spannachse ausserhalb von Feld 1,
-# erfunden wird keine.
+# erfunden wird keine. KURZE WAND (Fassung 2026-11-10): unter DECKENANSCHLUSS_DA3_AB_FELDERN
+# Feldern gilt DA 3 nicht — genau EIN Anschluss je Wand in Feld 1 (aeussere Achse, bei
+# Gleichstand der Wandanfang), dazu der Pruefhinweis aus deckenanschluss_kurzwand().
 
 
 def verteile_deckenanschluss(achsen_k=(), n_grid=0):
@@ -709,8 +713,13 @@ def verteile_deckenanschluss(achsen_k=(), n_grid=0):
     eine, die naechste zulaessige Achse (gemeldet von deckenanschluss_rand()). Dazwischen von links nach rechts jeweils die ENTFERNTESTE Achse
     innerhalb von DECKENANSCHLUSS_MAX_MM — kleinstmoegliche Punktzahl, deterministisch. Traegt
     kein Nachbar die Reichweite, wird die naechste Achse trotzdem gesetzt; die Ueberschreitung
-    meldet deckenanschluss_luecken(). Ohne zulaessige Achse entsteht kein Punkt.
+    meldet deckenanschluss_luecken(). Ohne zulaessige Achse entsteht kein Punkt. Unter drei
+    Feldern genau ein Punkt in Feld 1 (aeussere Achse, bei Gleichstand der Wandanfang).
     """
+    if n_grid < DECKENANSCHLUSS_DA3_AB_FELDERN:
+        K = sorted({k for k in (achsen_k or ()) if 0 <= k <= n_grid - 1},
+                   key=lambda k: (min(k, n_grid - 1 - k), k))
+        return [K[0]] if K else []
     Z = [k for k in sorted(set(achsen_k or ())) if 1 <= k <= n_grid - 2]
     if not Z:
         return []
@@ -752,6 +761,8 @@ def deckenanschluss_rand(punkte_k=(), n_grid=0):
     Je Wandende: Punkt in Feld 1 (`feld_1`) oder kein Punkt in Feld 2–3 (`fehlt_feld_2_3`, mit
     dem dem Ende naechsten Punkt ausserhalb von Feld 1 oder None). Nichts wird verschoben.
     """
+    if n_grid < DECKENANSCHLUSS_DA3_AB_FELDERN:
+        return []   # DA 3 gilt erst ab drei Feldern — siehe deckenanschluss_kurzwand()
     P = sorted(set(punkte_k or ()))
     R = DECKENANSCHLUSS_RANDFELD
     befunde = []
@@ -767,6 +778,30 @@ def deckenanschluss_rand(punkte_k=(), n_grid=0):
             befunde.append({"ende": ende, "grund": "fehlt_feld_2_3", "k": k,
                             "feld": None if k is None else feld(k)})
     return befunde
+
+
+def deckenanschluss_kurzwand(punkte_k=(), n_grid=0):
+    """Pruefhinweis der KURZEN Wand ([A-26], Fassung 2026-11-10) — Gegenstueck zu
+    deckenanschlussKurzwand(): unter drei Feldern genau ein Anschluss je Wand in Feld 1.
+    Selbstbeschreibend (regel/grund/text); ab drei Feldern immer leer, nichts wird verschoben.
+    """
+    if n_grid >= DECKENANSCHLUSS_DA3_AB_FELDERN:
+        return []
+    P = sorted(set(punkte_k or ()))
+    wand = f"Kurze Wand ({n_grid} Felder, {n_grid * GRID} mm)"
+    if not P:
+        grund = "keine_spannachse"
+        text = f"{wand}: keine Spannachse für den Deckenanschluss – Anschluss prüfen"
+    elif len(P) == 1:
+        grund = "feld_1"
+        text = (f"{wand}: ein Deckenanschluss je Wand in Feld 1 (Rasterachse {P[0]}) – "
+                f"DA 3 gilt erst ab 3 Feldern; Anschluss prüfen")
+    else:
+        grund = "mehrere"
+        text = (f"{wand}: {len(P)} Deckenanschlüsse gesetzt (Rasterachsen "
+                f"{', '.join(str(k) for k in P)}) – vorgesehen ist genau einer je Wand; "
+                f"Auswahl prüfen")
+    return [{"regel": "A-26", "grund": grund, "laenge_grid": n_grid, "punkte": P, "text": text}]
 
 
 def deckenanschluss_luecken(punkte_k=()):
@@ -2066,6 +2101,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # [A-26]/[A-27] Randfelder (DA 2/DA 3) fuer BEIDE Pfade; eine ausdruecklich leere
     # Override-Liste („kein Deckenanschluss") erzeugt keinen Randbefund.
     _dc_rand = [] if (_DC is not None and not _DC) else deckenanschluss_rand(_dc_k, N)
+    # [A-26] Kurze Wand (unter 3 Feldern): Pruefhinweis in beiden Pfaden, leere Liste ohne.
+    _dc_kurz = [] if (_DC is not None and not _DC) else deckenanschluss_kurzwand(_dc_k, N)
 
     bom = {"i2": 0, "i3": 0}
     for c in courses:
@@ -2157,6 +2194,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        **({"deckenanschluss_luecken": _dc_luecken} if _dc_luecken else {}),
                        # [A-26]/[A-27] Randfeld-Befunde — beide Pfade, nur im Befundfall.
                        **({"deckenanschluss_rand": _dc_rand} if _dc_rand else {}),
+                       # [A-26] Pruefhinweis der kurzen Wand — nur im Befundfall.
+                       **({"deckenanschluss_kurzwand": _dc_kurz} if _dc_kurz else {}),
                        # [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
                        "interlock_invalid_segments": interlock_invalid_segments,
                        # [G-18] Sonderzuschnitte der Ausgleichslage — sichtbare Meldung mit dem

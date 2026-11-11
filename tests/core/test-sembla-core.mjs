@@ -16,6 +16,7 @@ import {
   AUSGLEICH_ACHSVERSATZ, AUSGLEICH_DICHTE_JE_M, verteileAusgleichspunkte, normAusgleichspunkte,
   DECKENANSCHLUSS_MAX_MM, verteileDeckenanschluss, deckenanschlussLuecken, normDeckenanschluss,
   DECKENANSCHLUSS_RANDFELD, deckenanschlussRand,
+  DECKENANSCHLUSS_DA3_AB_FELDERN, deckenanschlussKurzwand,
 } from "../../docs/shared/sembla-core.js";
 // Der Auslegungsadapter gehoert zum Paritaetsvertrag: `psOf()` ist eine WHITELIST, und ein
 // dort fehlendes Feld faellt in jeder Iteration still weg. Deshalb wird der ECHTE Adapter
@@ -1789,7 +1790,7 @@ t("[A-26] keine Achse in Feld 2–3: naechste zulaessige Achse, sichtbar gemelde
   deepEqual(py.validation.deckenanschluss_rand, js.validation.deckenanschluss_rand);
 });
 
-t("[A-26] kurze Waende: ein Punkt kann beide Enden tragen, unter 3 Feldern keiner (Core == Orakel)", () => {
+t("[A-26] kurze Waende: ein Punkt kann beide Enden tragen (Core == Orakel)", () => {
   // N = 3: k=1 ist von beiden Enden Feld 2 — genau ein Punkt.
   deepEqual(verteileDeckenanschluss([1], 3), [1]);
   // N = 4 und 5: Feld 2–3 der beiden Enden ueberlappen; eine Achse im Ueberlapp genuegt.
@@ -1797,18 +1798,71 @@ t("[A-26] kurze Waende: ein Punkt kann beide Enden tragen, unter 3 Feldern keine
   deepEqual(verteileDeckenanschluss([2], 5), [2]);
   // N = 5 mit Achsen nur in Feld 2 von links bzw. rechts: zwei Punkte.
   deepEqual(verteileDeckenanschluss([1, 3], 5), [1, 3]);
-  // N = 2 (einzelner i2): jedes Feld ist von einem Ende aus Feld 1 — KEIN Punkt, beide Enden
-  // werden gemeldet; nie eine Achse in Feld 1 gesetzt.
+  // Ab drei Feldern gilt DA 3 weiter: nie Feld 1, kein Kurzwand-Hinweis.
+  deepEqual(deckenanschlussKurzwand([1], 3), []);
+  deepEqual(deckenanschlussKurzwand([], 3), []);
+});
+
+t("[A-26] Wand unter 3 Feldern: genau EIN Anschluss je Wand in Feld 1 + Pruefhinweis (Core == Orakel)", () => {
+  // Fassung 2026-11-10 (Felix Bauroth 06./10.11.): DA 3 gilt erst ab 3 Feldern.
+  assert(DECKENANSCHLUSS_DA3_AB_FELDERN === 3, "Schwelle");
+  // N = 2 (250-mm-Wand, i2-Stapel mit zwei Achsen): beide Achsen sind von einem Ende aus Feld 1
+  // und gleich weit aussen — Gleichstand, also der Wandanfang (k = 0). Nie zwei Punkte.
+  deepEqual(verteileDeckenanschluss([0, 1], 2), [0]);
+  deepEqual(verteileDeckenanschluss([1, 0, 1], 2), [0]);
+  deepEqual(verteileDeckenanschluss([1], 2), [1]);
+  deepEqual(verteileDeckenanschluss([], 2), []);
+  // Die aeussere Achse schlaegt den Wandanfang (rein rechnerisch, N = 1 ist kein realer Fall).
+  deepEqual(verteileDeckenanschluss([0], 1), [0]);
+  // Randbefunde entfallen: DA 3 gilt hier nicht.
+  deepEqual(deckenanschlussRand([0], 2), []);
+  deepEqual(deckenanschlussRand([], 2), []);
+
   const arg = { name: "dckurz", length_mm: 2 * GRID, height_mm: 2600, openings: [],
     prestress: { max_span_grid: 3 } };
   const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
   const py = orakelRand(arg);
+  deepEqual(js.tension_columns.map((c) => c.k), [0, 1]);   // Testvoraussetzung
   deepEqual(js.deckenanschlusspunkte, py.deckenanschlusspunkte);
-  deepEqual(js.deckenanschlusspunkte, []);
-  deepEqual(js.validation.deckenanschluss_rand, [
-    { ende: "links", grund: "fehlt_feld_2_3", k: null, feld: null },
-    { ende: "rechts", grund: "fehlt_feld_2_3", k: null, feld: null }]);
-  deepEqual(py.validation.deckenanschluss_rand, js.validation.deckenanschluss_rand);
+  deepEqual(js.deckenanschlusspunkte, [{ k: 0, x_mm: 62.5, art: "auto" }]);
+  assert(!("deckenanschluss_rand" in js.validation), "Randbefund trotz Kurzwand");
+  assert(!("deckenanschluss_luecken" in js.validation), "Luecke trotz Kurzwand");
+  deepEqual(js.validation.deckenanschluss_kurzwand, [{
+    regel: "A-26", grund: "feld_1", laenge_grid: 2, punkte: [0],
+    text: "Kurze Wand (2 Felder, 250 mm): ein Deckenanschluss je Wand in Feld 1 "
+      + "(Rasterachse 0) – DA 3 gilt erst ab 3 Feldern; Anschluss prüfen" }]);
+  deepEqual(py.validation.deckenanschluss_kurzwand, js.validation.deckenanschluss_kurzwand);
+  // Die Stueckliste zaehlt genau eine Baugruppe — sie folgt der Punktliste.
+  assert(js.deckenanschlusspunkte.length === 1, "genau ein Anschluss");
+});
+
+t("[A-26]/[A-27] Kurzwand im Override-Pfad: benannt, nichts verschoben (Core == Orakel)", () => {
+  for (const [dc, grund, punkte] of [[[1], "feld_1", [1]], [[0, 1], "mehrere", [0, 1]]]) {
+    const arg = { name: "dckov", length_mm: 2 * GRID, height_mm: 2600, openings: [],
+      prestress: { max_span_grid: 3, deckenanschluss_grid: dc } };
+    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+    const py = orakelRand(arg);
+    deepEqual(js.deckenanschlusspunkte, py.deckenanschlusspunkte);
+    deepEqual(js.deckenanschlusspunkte.map((p) => p.k), punkte);
+    deepEqual(py.validation.deckenanschluss_kurzwand, js.validation.deckenanschluss_kurzwand);
+    deepEqual(js.validation.deckenanschluss_kurzwand.map((b) => [b.grund, b.punkte]), [[grund, punkte]]);
+    assert(!("deckenanschluss_rand" in js.validation), "Randbefund trotz Kurzwand");
+  }
+  // Die ausdruecklich leere Liste („kein Deckenanschluss") bleibt ohne Hinweis.
+  const leer = buildWall("dckl", 2 * GRID, 2600, [], null,
+    { max_span_grid: 3, deckenanschluss_grid: [] });
+  deepEqual(leer.deckenanschlusspunkte, []);
+  assert(!("deckenanschluss_kurzwand" in leer.validation), "Hinweis trotz leerer Liste");
+  // Ohne jede Achse: kein Punkt erfunden, Grund benannt (reine Funktion, beide Cores gleich).
+  deepEqual(deckenanschlussKurzwand([], 2).map((b) => b.grund), ["keine_spannachse"]);
+});
+
+t("[A-26] Waende ab 3 Feldern tragen keinen Kurzwand-Schluessel (bit-gleich)", () => {
+  for (const n of [3, 4, 5, 8, 26]) {
+    const w = buildWall("dcab" + n, n * GRID, 2600, [], null, { max_span_grid: 3 });
+    assert(!("deckenanschluss_kurzwand" in w.validation), "Kurzwand-Schluessel bei N=" + n);
+    assert(w.deckenanschlusspunkte.every((p) => p.k + 1 !== 1 && n - p.k !== 1), "Feld 1 bei N=" + n);
+  }
 });
 
 t("[A-26] eine Achsluecke ueber 1125 mm wird benannt, nie eine Achse erfunden", () => {
