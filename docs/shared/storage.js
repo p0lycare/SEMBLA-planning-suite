@@ -87,6 +87,7 @@ const K_AKTIV_PRJ = "sembla:aktiv:projekt";
 const K_AKTIV_GEB = "sembla:aktiv:gebaeude";
 const K_AKTIV_GS = "sembla:aktiv:geschoss";
 const K_UI_TOOLTIPS = "sembla:ui:tooltips";  // Bedienvorliebe (Tooltips an/aus), keine Planungsdaten
+const K_UI_PRUEFKUERZEL = "sembla:ui:pruefkuerzel";  // zuletzt benutztes Prueferkuerzel ([P-25]), Bedienvorliebe
 
 /** Aktuelle Schema-Version des INTERNEN localStorage-Stands. Aeltere Staende
  *  werden beim Laden einmalig migriert.
@@ -138,7 +139,8 @@ const K_UI_TOOLTIPS = "sembla:ui:tooltips";  // Bedienvorliebe (Tooltips an/aus)
 export const SCHEMA_VERSION = 7;
 
 /** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
- *  Bleibt 2: `wandtyp`, `abdichtung` und `brandklasse` (alle am Wandelement, alle
+ *  Bleibt 2: `wandtyp`, `abdichtung`, `brandklasse` und `pruefvermerke` ([P-25]) (alle am
+ *  Wandelement, alle
  *  OPTIONAL — eine Datei ohne sie wird beim Lesen normalisiert, nicht abgelehnt)
  *  sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
  *  `eingaben.planung`, `eingaben.aufbau.produkte`, `eingaben.zeichnung`
@@ -2295,6 +2297,27 @@ export function setzeTooltipsAn(an) {
   if (an) localStorage.removeItem(K_UI_TOOLTIPS);
   else localStorage.setItem(K_UI_TOOLTIPS, "aus");
   _benachrichtige();
+}
+
+// ---------------------------------------------------------------------------
+// Bedienvorliebe: zuletzt benutztes Prueferkuerzel ([P-25], Modul 1)
+// ---------------------------------------------------------------------------
+// Nur Vorbelegung des Kuerzelfelds in diesem Browser — KEINE Planungsdaten. Der Pruefvermerk
+// selbst steht am Wandelement (`pruefvermerke`) und traegt sein Kuerzel dort. Ohne Benachrichtigung:
+// die Vorliebe aendert keine Anzeige anderer Module.
+
+/** Zuletzt benutztes Prueferkuerzel (leer, wenn keines gemerkt ist). */
+export function pruefKuerzel() {
+  try { return localStorage.getItem(K_UI_PRUEFKUERZEL) || ""; } catch { return ""; }
+}
+
+/** Prueferkuerzel merken (leer = vergessen). */
+export function setzePruefKuerzel(k) {
+  const t = String(k == null ? "" : k).trim();
+  try {
+    if (t) localStorage.setItem(K_UI_PRUEFKUERZEL, t);
+    else localStorage.removeItem(K_UI_PRUEFKUERZEL);
+  } catch { /* Vorliebe ist entbehrlich */ }
 }
 
 /** @type {Set<() => void>} */

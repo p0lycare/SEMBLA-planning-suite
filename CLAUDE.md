@@ -362,6 +362,24 @@ im Ansichtskopf das Badge „Spannachsen manuell (n)", an den Achsen-Knöpfen ei
 Lage/Raster; die **Wandliste des Geschosseditors** kennzeichnet die Wand ebenso. Reine Anzeige aus
 dem Wandelement — **nicht** auf dem Zeichnungsblatt (Modul 7; Planexport noch zu klären).
 
+**Prüfvermerke an Prüfhinweisen (`wandelement.pruefvermerke`, Regel [P-25], Felix Bauroth 06./10.11.2026).**
+Ein Prüfhinweis (Befund ohne Baubarkeitsausschluss, z. B. [Z-9], [A-26]/[A-27] samt Kurzwand,
+[V-9], [A-17]/[A-24]/[A-30]/[G-12], [A-32]) bleibt stehen, solange die Ursache besteht. In **Modul 1**
+trägt jeder einen Knopf „geprüft" (Kürzel + heutiges Datum); markiert bleibt er **grau** sichtbar
+(„geprüft von XY am …"). Gespeichert am Wandelement als optionales Array `{art, fingerabdruck,
+kuerzel, datum}` (je Art höchstens einer) — **kein** Schema-/Formatsprung, Altbestand = nichts
+geprüft. Der Fingerabdruck = Art + vollständige Befunddaten + Wandgeometrie (Länge, Höhe,
+Öffnungen, Staffelungen, Verzahnungen, Ausgleichslage); ändert sich davon etwas, ist der Hinweis
+wieder **aktiv** (Brandschutz/Wandtyp/Abdichtung zählen nicht). Logik rein in
+`docs/shared/sembla-pruefhinweise.js` (`HINWEIS_ARTEN`, `pruefhinweise(w)` liefert Hinweise samt
+Status allein aus dem Wandelement — so liest der Geschossplan sie später); Hinweise ohne eigene Art
+sind über ihren Wortlaut quittierbar (`textArt`). **Nicht** quittierbar: Baubarkeitsfehler
+(Versatz, ungültige Abschnitte/Segmente, Restbreite, [A-29]) und die Geschossangaben zu [A-33].
+Mitgeführt in Modul 1 (`aktPruefvermerke`), `rechneWandelement()` im Geschosseditor und
+`wandelementAktualisiert()`; **Modul 7 und das Zeichnungs-PDF lesen das Feld nicht** (bytegleich,
+`tests/module/test-pruefvermerk.mjs`). Das zuletzt benutzte Kürzel ist eine Bedienvorliebe
+(`store.pruefKuerzel`, `sembla:ui:pruefkuerzel`), keine Planungsdaten.
+
 **Projektmappen (`sembla:projekte`, Format `SEMBLA-Projektmappe` v2, Regeln [L-1]…[L-12]).**
 Projektstruktur (**Projekt → Gebäude → Geschoss → Wand**) und die **Lage** der Wände
 sind — wie der Katalog — eine **eigene Ressource**: eigener localStorage-Slot, eigene
@@ -1328,6 +1346,9 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      Speicherzugriff, der die kanonischen Werte F0/F30 samt Standard mitbringt; eine zweite
      Werteliste hier wäre Drift. Eigene Tests (`tests/module/test-lageplan.mjs`, sie prüfen genau
      diesen einen Import).
+   - `sembla-pruefhinweise.js` — **Prüfhinweise und Prüfvermerke** ([P-25]): Hinweisarten aus
+     `validation`, Fingerabdruck, Kürzel-/Datumsprüfung, Vermerke setzen/aufheben (rein). Genutzt
+     von Modul 1, lesbar für den Geschossplan; eigene Tests (`tests/module/test-pruefvermerk.mjs`).
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
      **Katalogspeicher** (`listeKataloge`/`katalogNachId`/`katalogStatus`/`setzeProjektKatalog`;
      seit #108 schreibt `setzeKatalog(kat, {zuordnen})` wahlweise **ohne** Zuordnung, und

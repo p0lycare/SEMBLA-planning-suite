@@ -554,6 +554,9 @@ export function wandelementAktualisiert(wandelement, eingaben, katalog, engine) 
   neu.wandtyp = we.wandtyp;            // haengt nicht am Core ([P-1])
   neu.abdichtung = we.abdichtung;      // [A-6]/#71: Fachmerkmal der Wand
   neu.brandklasse = we.brandklasse;    // #79: reine Planungskennzeichnung
+  // [P-25] Prüfvermerke reisen unverändert mit (nur wenn vorhanden) — damit jeder Leser der
+  // frischen Sicht (Geschossplan) sie gegen den frischen Befund halten kann.
+  if (we.pruefvermerke != null) neu.pruefvermerke = we.pruefvermerke;
   return { wandelement: neu, aktualisiert: true, grund: null, fehlend: [], vorgaben };
 }
 

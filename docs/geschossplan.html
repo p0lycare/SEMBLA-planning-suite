@@ -4614,6 +4614,9 @@ function rechneWandelement(el, laengeGrid, hoeheMm, patch, prestressPatch, ausgl
   neu.wandtyp = we.wandtyp;         // hängt nicht am Core, gewählt beim Zeichnen bzw. im Sammel-Editor
   neu.abdichtung = we.abdichtung;   // [A-6]/#71: Fachmerkmal der Wand
   neu.brandklasse = we.brandklasse; // #79: reine Planungskennzeichnung
+  // [P-25] Prüfvermerke reisen unverändert mit (nur wenn vorhanden). Ändert die Neurechnung
+  // Wand oder Befund, passt ihr Fingerabdruck nicht mehr und der Hinweis ist wieder aktiv.
+  if (we.pruefvermerke != null) neu.pruefvermerke = we.pruefvermerke;
   return neu;
 }
 

@@ -63,6 +63,15 @@
     min-width:46px;text-align:center}
   button:disabled{background:#f2f4f7;color:#8a9098;cursor:not-allowed}
   .warns{margin-top:8px;font-size:12.5px;color:var(--sb-warn)}
+  /* [P-25] Prüfhinweise: je Hinweis eine Zeile; geprüfte bleiben grau sichtbar. */
+  .warns .ph{margin:3px 0}
+  .warns .ph-knopf{margin-left:6px;padding:1px 7px;font-size:11.5px}
+  .warns .ph-geprueft{color:#8a9098}
+  .warns .ph-geprueft .ph-text{text-decoration:line-through;text-decoration-color:#b8bec6}
+  .warns .ph-vermerk{font-weight:600;color:#5b6470;margin-left:4px}
+  .pruefkopf{margin-top:8px;font-size:12px;color:#5b6470;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .pruefkopf input{width:6em}
+  .pruefkopf .pruefmsg{color:var(--sb-warn)}
   /* Zuschnittlegende (Issue #63): eigener Bereich AUSSERHALB des Plan-SVG. Im Bild lag sie im
      46-px-Kopfraum und verdeckte dort Reststueck-Ueberstand ([Z-6]), Kopfblech/Spannplatten,
      Achsgriffe und Bemassung. Farben/Texte bleiben die geteilten Werte aus sembla-montage.js. */
@@ -292,6 +301,12 @@
       <svg id="plan" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
     <div class="zlegende" id="zLegende"></div>
+    <div class="pruefkopf" id="pruefKopf" hidden>
+      <label>Prüfkürzel <input id="pruefKuerzel" size="6" autocomplete="off" spellcheck="false"></label>
+      <span class="pruefhilfe">„geprüft“ markiert einen Hinweis mit Kürzel und heutigem Datum; ändert sich Wand oder Hinweis, ist er wieder aktiv. Nur hier sichtbar, nicht auf dem Zeichnungsblatt.</span>
+      <span class="pruefmsg" id="pruefMsg" role="alert"></span>
+      <span class="pruefmsg" id="pruefUngueltig"></span>
+    </div>
     <div class="warns" id="warns" role="status"></div>
 
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:14px">
@@ -384,6 +399,11 @@ let hatWand=false;
 // unveraendert mit — buildWall() erzeugt das Wandelement neu, darum wird er nach jeder
 // Auslegung wieder angehaengt.
 let aktWandtyp=null;
+// [P-25] Prüfvermerke des Wandelements: wie der Wandtyp hängen sie nicht am Core und werden nach
+// jeder Auslegung wieder angehängt. `null` = Feld fehlt (Altbestand, nichts geprüft).
+let aktPruefvermerke=null;
+// Baustein der Prüfhinweise (sembla-pruefhinweise.js); fehlt er, gibt es keine Quittierung.
+let PH=null;
 const SIDE_LABEL={fassade:'Fassade',innenausbau:'Innenausbau',sicht:'Sichtfläche',installation:'Installation'};
 let openings=[], stepsArr=[], interlocksArr=[], VIEW='vorne', RESULT=null;
 // [A-33] Lesende Sicht auf RESULT mit den geteilten Spannpunkten an Verzahnungen (aus Geschoss,
@@ -682,12 +702,14 @@ function run(){
   catch(e){ err=e; }
   if(err){ $('statusBadge').className='badge no'; $('statusBadge').textContent='Eingabe ungültig';
     renderAchsHinweis(null);
-    $('warns').textContent=err.message;
+    $('warns').textContent=err.message; PH_AKTUELL.warns=[]; syncPruefKopf();
     // #136 Der Höhenkonflikt ist BENANNT (`grund`), nicht aus dem Meldungstext geraten: die
     // eingegebene Zielhöhe bleibt unverändert stehen und wird NIE ins Raster gerundet ([P-9]).
     zeigeZerlegung(null, err);
     return; }
   RESULT.wandelement.wandtyp=aktWandtyp;       // Wandtyp des Elements unveraendert mitfuehren
+  // [P-25] Prüfvermerke unverändert mitführen — ein leerer Stand schreibt kein Feld.
+  if(Array.isArray(aktPruefvermerke) && aktPruefvermerke.length) RESULT.wandelement.pruefvermerke=aktPruefvermerke.slice();
   // [A-6]/#71: Die Abdichtung ist ein Fachmerkmal DIESER Wand und wird hier gewaehlt. Sie
   // haengt — wie der Wandtyp — nicht am Core, wird also nach dem Neuaufbau durch buildWall()
   // wieder angehaengt. Auf Geometrie, Vorspannung und die Core-Mengen wirkt sie nicht; sie
@@ -726,14 +748,19 @@ function run(){
   $('rGrid').textContent=w.N_grid+' × '+w.lagen+' Lagen';
   const b=w.bom; $('rSteine').textContent=fmt((b.i3||0)+(b.i2||0),0)+' ('+fmt(b.i3||0,0)+' · '+fmt(b.i2||0,0)+')';
   renderIter(auto?RESULT.iterationen:[]);
+  // [P-25] Die Warnliste unterscheidet drei Sorten: `hinweis(art, …)` ist ein Prüfhinweis mit
+  // Befunddaten im Wandelement (quittierbar, Fingerabdruck aus den Daten), `fehler(…)` macht die
+  // Wand nicht baubar (nicht quittierbar — beheben, nicht abhaken), und ein bloßer Text ist ein
+  // Prüfhinweis ohne eigene Art (quittierbar über seinen Wortlaut).
   const warns=[];
-  if(vv.invalid_segments.length) warns.push('⚠ Ungültiges Maß: Abschnitt mit '+vv.invalid_segments[0].breite_grid+' Rastern.');
+  const hinweis=(art,text)=>warns.push({art,text}), fehler=text=>warns.push({text,fehler:true});
+  if(vv.invalid_segments.length) fehler('⚠ Ungültiges Maß: Abschnitt mit '+vv.invalid_segments[0].breite_grid+' Rastern.');
   if(!vv.versatz_ok && vv.versatz_violations && vv.versatz_violations.length){
     const vo=vv.versatz_violations[0];
-    warns.push('⚠ Versatz-Verletzung an '+vv.versatz_violations.length+' Stelle(n) – z. B. zwischen Lage '
+    fehler('⚠ Versatz-Verletzung an '+vv.versatz_violations.length+' Stelle(n) – z. B. zwischen Lage '
       +(vo.zwischen_lagen[0]+1)+' und '+(vo.zwischen_lagen[1]+1)+' (Stoßfuge im selben Raster, Mindestversatz 1 Raster unterschritten).');
   }
-  if(!vv.buildable) warns.push('⚠ Wand strukturell nicht baubar (ungültige Vorspann-Segmente).');
+  if(!vv.buildable) fehler('⚠ Wand strukturell nicht baubar (ungültige Vorspann-Segmente).');
   // [Z-5] Zuschnitt-Konflikt: der Vorratssatz lässt kein einbaubares Fertigmaß zu. Sichtbar
   // gemeldet statt still ein nicht einbaubares Kurzstück auszugeben.
   const zkAlle=vv.zuschnitt_konflikte||[];
@@ -741,10 +768,10 @@ function run(){
   // benannt — nie als [Z-5]-Meldung mitgezählt.
   const zs=zkAlle.filter(k=>k.grund==='stoss_auf_zwischenpunkt');
   const zk=zkAlle.filter(k=>k.grund!=='stoss_auf_zwischenpunkt');
-  if(zk.length) warns.push('⚠ Zuschnitt [Z-5]: '+zk.length+' Segment(e) mit Fertigmaß unter '
+  if(zk.length) hinweis('z5_zuschnitt','⚠ Zuschnitt [Z-5]: '+zk.length+' Segment(e) mit Fertigmaß unter '
     +'20 cm (z. B. '+fmt(zk[0].fertigmass_mm/10,1)+' cm) — weitere Standardlänge wählen, '
     +'damit die Kombination ein einbaubares Restmaß ergibt.');
-  if(zs.length) warns.push('⚠ Zuschnitt [Z-7]: '+zs.length+' Segment(e) ohne stoßfreie '
+  if(zs.length) hinweis('z7_stoss_zwischenpunkt','⚠ Zuschnitt [Z-7]: '+zs.length+' Segment(e) ohne stoßfreie '
     +'Kombination — eine Kopplung liegt auf der Höhe eines Zwischenspannpunkts (Einlegeblech). '
     +'Weitere Standardlänge wählen oder den Punkt auf eine andere Lage setzen.');
   // [Z-9] Feste Stangenfolge passt nicht: der Rechenkern kombiniert dort nach [Z-2]. Benannt,
@@ -752,54 +779,54 @@ function run(){
   const sr=vv.stangenschema_rueckfall||[];
   if(sr.length){
     const SR_GRUND={mindestmass:'Zuschnitt unter 20 cm [Z-5]',stoss_auf_zwischenpunkt:'Stoß auf Zwischenspannpunkt [Z-7]'};
-    warns.push('⚠ Stangenfolge [Z-9]: in '+sr.length+' Segment(en) (Spannachse '
+    hinweis('z9_stangenfolge','⚠ Stangenfolge [Z-9]: in '+sr.length+' Segment(en) (Spannachse '
       +[...new Set(sr.map(x=>'k'+x.k))].join(', ')+') passt die feste Folge (größte Standardlänge, '
       +'variables Stück, Spannstück) nicht — '+[...new Set(sr.map(x=>SR_GRUND[x.grund]||x.grund))].join(', ')
       +'. Dort aus den Standardlängen kombiniert [Z-2]; bitte von Hand prüfen.');
   }
   // [A-17] Abgewiesene manuelle Punkte: benannt, nicht angewandt, nie auf eine andere Lage gerundet.
   const zpf=vv.zwischenpunkt_fehler||[];
-  if(zpf.length) warns.push('⚠ Zwischenspannpunkte [A-17]: '+zpf.length+' Wert(e) abgewiesen ('
+  if(zpf.length) hinweis('a17_zwischenpunkt','⚠ Zwischenspannpunkte [A-17]: '+zpf.length+' Wert(e) abgewiesen ('
     +ZP_GRUND[zpf[0].grund]+', z. B. '+zpf[0].wert+' mm) — nicht angewandt, nichts gerundet.');
   // [A-24] Abgewiesene manuelle Ausgleichspunkte: ebenso benannt, nie auf eine andere Lage gerundet.
   const agf=vv.ausgleich_fehler||[];
-  if(agf.length) warns.push('⚠ Ausgleichspunkte [A-24]: '+agf.length+' Wert(e) abgewiesen ('
+  if(agf.length) hinweis('a24_ausgleichspunkt','⚠ Ausgleichspunkte [A-24]: '+agf.length+' Wert(e) abgewiesen ('
     +AG_GRUND[agf[0].grund]+', z. B. '+agf[0].wert+' mm) — nicht angewandt, nichts gerundet.');
   // [A-27] Abgewiesene manuelle Deckenanschlusspunkte: ebenso benannt, nie auf die Nachbarachse
   // geschoben.
   const dcf=vv.deckenanschluss_fehler||[];
-  if(dcf.length) warns.push('⚠ Deckenanschluss [A-27]: '+dcf.length+' Wert(e) abgewiesen ('
+  if(dcf.length) hinweis('a27_deckenanschluss_fehler','⚠ Deckenanschluss [A-27]: '+dcf.length+' Wert(e) abgewiesen ('
     +DC_GRUND[dcf[0].grund]+', z. B. Rasterachse '+dcf[0].wert+') — nicht angewandt, nichts verschoben.');
   // [A-26]/[A-27] Randfelder (DA 2/DA 3): je Wandende ein Anschluss in Feld 2–3, nie in Feld 1.
   // Befund aus dem Rechenkern (beide Pfade) — benannt, nichts verschoben, keine Achse erfunden.
   const dcr=vv.deckenanschluss_rand||[];
-  if(dcr.length) warns.push('⚠ Deckenanschluss [A-26]: '+dcr.map(dcRandText).join('; ')+'.');
+  if(dcr.length) hinweis('a26_deckenanschluss_rand','⚠ Deckenanschluss [A-26]: '+dcr.map(dcRandText).join('; ')+'.');
   // [A-26] Kurze Wand (unter 3 Feldern, Fassung 2026-11-10): DA 3 gilt nicht, genau EIN Anschluss
   // je Wand in Feld 1 — als Prüfhinweis im Wortlaut des Rechenkerns (selbstbeschreibend, nicht
   // neu formuliert). Nur hier in Modul 1, nicht auf dem Zeichnungsblatt.
   const dck=vv.deckenanschluss_kurzwand||[];
-  if(dck.length) warns.push('⚠ Deckenanschluss [A-26]: '+dck.map(b=>b.text).join(' · ')+'.');
+  if(dck.length) hinweis('a26_deckenanschluss_kurzwand','⚠ Deckenanschluss [A-26]: '+dck.map(b=>b.text).join(' · ')+'.');
   // [A-26] Unerfüllbare 1125-mm-Vorgabe im Auto-Pfad: die Spannachsen selbst stehen zu weit.
   const dcl=vv.deckenanschluss_luecken||[];
-  if(dcl.length) warns.push('⚠ Deckenanschluss [A-26]: '+dcl.length+' Abstand/Abstände über '
+  if(dcl.length) hinweis('a26_deckenanschluss_luecken','⚠ Deckenanschluss [A-26]: '+dcl.length+' Abstand/Abstände über '
     +'1125 mm (z. B. '+fmt(dcl[0].abstand_mm/10,1)+' cm) — dort steht keine Spannachse näher.');
   // [A-29] Ein durch eine Aussparung entstandener Bereich unter der kleinsten zulässigen
   // Bodenblechlänge ist NICHT baubar. Benannt statt kaschiert: die Ansicht überbrückt ihn
   // ausdrücklich nicht — dort steht kein Blech, und es wird auch keines dargestellt.
   const bku=(vv.blech_konflikte||[]).filter(k=>k.grund==='bereich_unbaubar');
-  if(bku.length) warns.push('⚠ Bodenblech [A-29]: '+bku.length+' Bereich(e) zwischen den '
+  if(bku.length) fehler('⚠ Bodenblech [A-29]: '+bku.length+' Bereich(e) zwischen den '
     +'Aussparungen zu kurz für ein Bodenblech (z. B. '+fmt(bku[0].laenge_mm/10,1)+' cm ab '
     +fmt(bku[0].x0_mm/10,1)+' cm) — kein Blech überbrückt die Lücke; Aussparung ändern oder '
     +'kürzere Standardlänge wählen.');
   // [A-30] Abgewiesene Aussparungsfelder: benannt, verworfen, nie auf ein anderes Feld geschoben.
   const asf=vv.aussparung_fehler||[];
-  if(asf.length) warns.push('⚠ Bodenblech-Aussparungen [A-30]: '+asf.length+' Feld(er) abgewiesen ('
+  if(asf.length) hinweis('a30_aussparung','⚠ Bodenblech-Aussparungen [A-30]: '+asf.length+' Feld(er) abgewiesen ('
     +AS_GRUND[asf[0].grund]+', z. B. Rasterfeld '+asf[0].wert+') — nicht angewandt, nichts verschoben.');
   // [G-17]/[G-18] Sonderzuschnitte der Ausgleichslage: der Katalog führt für diese Resthöhe kein
   // Produkt mit exakt passender Steinhöhe. KEIN Baubarkeitsausschluss — ein sichtbarer
   // Prüfhinweis mit dem TATSÄCHLICHEN Maß, im Wortlaut des Rechenkerns (nicht neu formuliert).
   const ags=vv.ausgleich_sonderzuschnitte||[];
-  if(ags.length) warns.push('⚠ Ausgleichslage [G-17]: '+ags.length+' Sonderzuschnitt(e) — '
+  if(ags.length) hinweis('g17_ausgleichslage','⚠ Ausgleichslage [G-17]: '+ags.length+' Sonderzuschnitt(e) — '
     +ags.map(s=>s.text+' ('+s.anzahl+' Stück)').join(' · ')+'.');
   // [V-9]/[V-2] Bei manuell gesetzten Spannachsen ist die Steinabdeckung NICHT mehr garantiert:
   // der Rechenkern ergaenzt nichts und meldet jeden nicht durchgangenen Stein. Benannt mit Lage
@@ -809,11 +836,11 @@ function run(){
   // doch etwas, ist das ein Fehler der Auto-Verteilung und wird so benannt — nicht als manuell.
   const ug=vv.ungehaltene_steine||[];
   const ugManuell=achsenManuell(w)>0;
-  if(ug.length) warns.push('⚠ Spannachsen '+(ugManuell?'[V-9]':'(automatisch)')+': '+ug.length
+  if(ug.length) hinweis('v9_ungehaltene_steine','⚠ Spannachsen '+(ugManuell?'[V-9]':'(automatisch)')+': '+ug.length
     +' Stein(e) von keiner Achse durchgangen [V-2] — z. B. '+ug.slice(0,3).map(x=>'Lage '+(x.lage+1)
       +' ab Raster '+x.start_grid+' ('+x.typ+')').join(', ')
     +(ugManuell?'. Achse ergänzen oder „Zurück zu Auto".':'. Bitte melden — die automatische Verteilung muss jeden Stein halten.'));
-  $('warns').textContent=warns.join('   ');
+  renderPruefhinweise($('warns'), warns, w);
   renderAchsHinweis(w);
   // [A-33] Geteilte Spannpunkte: frisch aus Geschoss + Partnerwand, nie gespeichert.
   SICHT=null;
@@ -838,7 +865,7 @@ function run(){
 function renderLeer(){
   RESULT=null;
   $('statusBadge').className='badge'; $('statusBadge').textContent='Neu';
-  $('warns').textContent='';
+  $('warns').textContent=''; PH_AKTUELL.warns=[]; PH_AKTUELL.interlockWarns=[]; syncPruefKopf();
   renderAchsHinweis(null);
   $('zerlegung').innerHTML=''; $('ausgleichHinweis').innerHTML='';   // #136 kein Ergebnis, keine Zerlegung
   ['dims','rSp','rStrands','rN','rGrid','rSteine'].forEach(id=>$(id).textContent='—');
@@ -1514,28 +1541,101 @@ function renderInterlockWarns(vv){
     const txt=INTERLOCK_GRUND[f.grund]||f.grund;
     const pos=f.bereich?` (Raster ${f.bereich.g0}–${f.bereich.g1})`:'';
     const nr=interlockNr(f.bereich);
-    warns.push('⚠ '+(nr?'Verzahnung '+nr:'Verzahnung')+' abgewiesen: '+txt+pos);
+    warns.push({art:'g12_verzahnung', text:'⚠ '+(nr?'Verzahnung '+nr:'Verzahnung')+' abgewiesen: '+txt+pos});
   }
   const inv=vv.interlock_invalid_segments||[];
-  for(const s of inv) warns.push('⚠ Restbreite nicht baubar: Lage '+(s.lage+1)+', Raster '+s.start_grid+', '+s.breite_grid+' Raster');
+  for(const s of inv) warns.push({fehler:true, text:'⚠ Restbreite nicht baubar: Lage '+(s.lage+1)+', Raster '+s.start_grid+', '+s.breite_grid+' Raster'});
   // [A-32] Bodenblech im Verband: die abgeleitete Kürzung wird benannt (Hinweis), die nicht
   // sauber lösbaren Fälle als Warnung zur manuellen Prüfung — im Wortlaut je Grund.
   const bp=(RESULT&&RESULT.wandelement&&RESULT.wandelement.base_plate)||{};
   for(const k of (bp.verzahnung_kuerzungen||[])){
     const nr=interlockNr(k);
-    warns.push('ℹ Bodenblech unter '+(nr?'Verzahnung '+nr:'der Verzahnung')+' (Raster '+k.g0+'–'+k.g1
+    warns.push({info:true, text:'ℹ Bodenblech unter '+(nr?'Verzahnung '+nr:'der Verzahnung')+' (Raster '+k.g0+'–'+k.g1
       +') entfällt — dort liegt das Bodenblech der Partnerwand; der Stein der untersten Lage '
-      +'überbrückt die Blechfuge. Abgeleitet, nicht gespeichert.');
+      +'überbrückt die Blechfuge. Abgeleitet, nicht gespeichert.'});
   }
   // [A-33] Eine Achse im gekürzten Feld ist ein geteilter Spannpunkt — sie steht unten mit
   // Partnerwand und Zuordnung; der allgemeine [A-32]-Hinweis entfällt dann für sie.
   const gsp=(SICHT&&SICHT.geteilte_spannpunkte)||[];
   for(const h of (vv.verzahnung_bodenblech||[])){
     if(h.grund==='achse_auf_partnerblech' && gsp.some(p=>p.k===h.k)) continue;
-    warns.push(vzBlechText(h));
+    // [P-25] Je Grund eine quittierbare Art; die Achse auf dem Partnerblech ist nur ℹ.
+    warns.push(h.grund==='achse_auf_partnerblech' ? {info:true, text:vzBlechText(h)}
+      : {art:'a32_'+h.grund, text:vzBlechText(h)});
   }
-  for(const p of gsp) warns.push((p.fuehrt||p.unverortet?'ℹ ':'⚠ ')+spannpunktHinweis(p));
-  box.innerHTML=warns.map(w=>'<div>'+w+'</div>').join('');
+  // Geteilte Spannpunkte entstehen aus dem Geschoss ([K-13.1]) — nicht aus diesem Wandelement;
+  // „Zuordnung offen“ ist ein Fehler nach [N-7]. Beides nicht quittierbar.
+  for(const p of gsp) warns.push({info:true, text:(p.fuehrt||p.unverortet?'ℹ ':'⚠ ')+spannpunktHinweis(p)});
+  renderPruefhinweise(box, warns, RESULT&&RESULT.wandelement);
+}
+
+// ---------- Prüfvermerke ([P-25], Felix Bauroth 06./10.11.2026) ----------
+// Ein Prüfhinweis bleibt stehen, solange seine Ursache besteht. Wer ihn geprüft hat, markiert
+// ihn mit Kürzel und Datum als „geprüft“: er bleibt dann GRAU sichtbar („geprüft von XY am …“).
+// Gespeichert wird der Vermerk am Wandelement (`pruefvermerke`, optional) und an den
+// Fingerabdruck des Hinweises gebunden (Art + Befunddaten + Wandgeometrie, sembla-pruefhinweise.js)
+// — ändert sich Wand oder Hinweis, passt er nicht mehr und der Hinweis ist wieder aktiv.
+// Nur hier sichtbar: das Zeichnungsblatt (Modul 7) und sein PDF lesen das Feld nicht.
+// Zuletzt gezeigte quittierbare Hinweise je Kasten: { <kasten-id>: [{art, fp}] }.
+const PH_AKTUELL={};
+function phArten(){ return [...new Set(Object.values(PH_AKTUELL).flat().map(h=>h.art))]; }
+/** Eine Warnliste in einen Kasten zeichnen — je quittierbarem Hinweis mit Knopf bzw. Vermerk. */
+function renderPruefhinweise(box, eintraege, w){
+  if(!box) return;
+  const liste=[];
+  const zeilen=eintraege.map(e=>{
+    if(typeof e==='string') e={text:e};
+    // Textinhalt: nur &<> maskieren (Anführungszeichen bleiben lesbar wie bisher).
+    const txt='<span class="ph-text">'+String(e.text).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</span>';
+    if(e.fehler||e.info||!PH||!w) return '<div class="ph">'+txt+'</div>';
+    const art=e.art||PH.textArt(e.text);
+    const fp=(e.art&&PH.abdruckFuerArt(w,e.art))||PH.fingerabdruck(art,e.text,w);
+    liste.push({art,fp});
+    const v=PH.vermerkFuer({pruefvermerke:aktPruefvermerke},art,fp);
+    if(v) return '<div class="ph ph-geprueft" data-art="'+escP(art)+'">'+txt
+      +' <span class="ph-vermerk">✓ '+escP(PH.vermerkText(v))+'</span>'
+      +' <button type="button" class="mini ph-knopf" data-pruef-auf="'+escP(art)+'"'
+      +' aria-label="Prüfvermerk aufheben">Prüfung aufheben</button></div>';
+    return '<div class="ph" data-art="'+escP(art)+'">'+txt
+      +' <button type="button" class="mini ph-knopf" data-pruef="'+escP(art)+'" data-fp="'+escP(fp)+'"'
+      +' aria-label="Hinweis als geprüft markieren (Kürzel und heutiges Datum)">geprüft</button></div>';
+  });
+  PH_AKTUELL[box.id]=liste;
+  box.innerHTML=zeilen.join('');
+  syncPruefKopf();
+}
+/** Kürzelfeld nur zeigen, wenn es etwas zu quittieren gibt; unzulässige Vermerke benennen. */
+function syncPruefKopf(){
+  const kopf=$('pruefKopf'); if(!kopf) return;
+  kopf.hidden=!(PH && hatWand && phArten().length);
+  const ung=(PH&&aktPruefvermerke)?PH.pruefvermerke({pruefvermerke:aktPruefvermerke}).ungueltig.length:0;
+  $('pruefUngueltig').textContent=ung?('⚠ '+ung+' gespeicherte(r) Prüfvermerk(e) unzulässig — nicht angewandt, nicht gelöscht.'):'';
+}
+/** Knopf „geprüft“ / „Prüfung aufheben“ (delegiert an beiden Kästen). */
+function phKlick(ev){
+  let t=ev&&ev.target;
+  if(t&&typeof t.closest==='function') t=t.closest('[data-pruef],[data-pruef-auf]');
+  const ds=(t&&t.dataset)||{};
+  if(ds.pruef) markiereGeprueft(ds.pruef, ds.fp);
+  else if(ds.pruefAuf) hebePruefungAuf(ds.pruefAuf);
+}
+function markiereGeprueft(art, fp){
+  if(!PH||!RESULT||!hatWand) return false;
+  const k=String($('pruefKuerzel').value||'');
+  const f=PH.kuerzelFehler(k);
+  $('pruefMsg').textContent=f||'';
+  if(f){ if(AX) AX.ungueltig($('pruefKuerzel'), $('pruefMsg')); return false; }
+  if(AX) AX.ungueltig($('pruefKuerzel'), null);
+  aktPruefvermerke=PH.setzeVermerk(aktPruefvermerke, {art, fingerabdruck:fp, kuerzel:k, datum:PH.heute()}, phArten());
+  if(store&&store.setzePruefKuerzel) store.setzePruefKuerzel(k.trim());
+  run();          // schreibt über den einen Auslegungs-/Speicherpfad (persistAktiv)
+  return true;
+}
+function hebePruefungAuf(art){
+  if(!PH||!RESULT||!hatWand) return false;
+  aktPruefvermerke=PH.entferneVermerk(aktPruefvermerke, art);
+  run();
+  return true;
 }
 
 // ---------- Aktives Wandelement (localStorage) ----------
@@ -1569,7 +1669,7 @@ function setupStoreSync(){
       const we=store.aktivesWandelement&&store.aktivesWandelement();
       aktName=(e&&e.name)||(we&&we.name)||'Wand';
       if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
-      else { hatWand=false; aktWandtyp=null; renderLeer(); saveHint('Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.'); }
+      else { hatWand=false; aktWandtyp=null; aktPruefvermerke=null; renderLeer(); saveHint('Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.'); }
     }
   });
 }
@@ -1579,13 +1679,16 @@ function loadInitial(){
   if(e&&e.name) aktName=e.name;
   else if(we&&we.name) aktName=we.name;
   if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
-  else { hatWand=false; aktWandtyp=null; renderSteps(); renderOps(); renderInterlocks(); renderLeer(); saveHint('Kein aktives Wandelement — bitte in Modul 0 („Start") anlegen und aktiv setzen.'); }
+  else { hatWand=false; aktWandtyp=null; aktPruefvermerke=null; renderSteps(); renderOps(); renderInterlocks(); renderLeer(); saveHint('Kein aktives Wandelement — bitte in Modul 0 („Start") anlegen und aktiv setzen.'); }
 }
 
 // ---------- Laden / Export (Datei) ----------
 function applyWand(w){
   hatWand=true;
   aktWandtyp=w.wandtyp;                          // read-only mitgefuehrt (keine Auswahl in Modul 1)
+  // [P-25] Prüfvermerke werden übernommen, wie sie gespeichert sind (auch unzulässige — benannt,
+  // nie still gelöscht); fehlt das Feld, ist nichts geprüft.
+  aktPruefvermerke=Array.isArray(w.pruefvermerke)?w.pruefvermerke.slice():(w.pruefvermerke!=null?[w.pruefvermerke]:null);
   // [A-6]/#71: Die Abdichtung wird HIER gewaehlt; ein Wandelement ohne das Feld (Altbestand,
   // frisch gezeichnete Wand) gilt beim Lesen als „nicht abgedichtet“ — normalisiert, nicht
   // zurueckgeschrieben. Erst eine Auslegung schreibt den Wert ans Element.
@@ -2660,6 +2763,10 @@ function bindEvents(){
   $('addInterlock').addEventListener('click',addInterlock);
   $('viewToggle').addEventListener('click',()=>{ VIEW=VIEW==='vorne'?'hinten':'vorne'; $('viewToggle').textContent='Ansicht: '+(VIEW==='vorne'?'Vorderseite':'Rückseite'); run(); });
   $('run').addEventListener('click',run);
+  // [P-25] Knöpfe „geprüft“/„Prüfung aufheben“ entstehen bei jedem Rendern neu — delegiert.
+  $('warns').addEventListener('click',phKlick);
+  $('interlockWarns').addEventListener('click',phKlick);
+  $('pruefKuerzel').addEventListener('input',()=>{ $('pruefMsg').textContent=''; if(AX) AX.ungueltig($('pruefKuerzel'), null); });
   $('zoomIn').addEventListener('click',()=>zoomSchritt(+1));
   $('zoomOut').addEventListener('click',()=>zoomSchritt(-1));
   $('zoomFit').addEventListener('click',zoomEinpassen);
@@ -2701,6 +2808,7 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   get senkkopfSw(){return senkkopfSwMm();}, get senkkopfD(){return senkkopfDMm();},
   get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
+  markiereGeprueft, hebePruefungAuf, get pruefvermerke(){return aktPruefvermerke;},
   setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},
   ansichtSc, einpassFaktor, ANSICHT_LAGE_PX, get LASTDRAW(){return LASTDRAW;},
   ZOOM_MIN, ZOOM_MAX, ZOOM_SCHRITT, ZOOM_FIT };
@@ -2713,6 +2821,7 @@ window.__wpInit=function(){
   AUSGLEICH_KONFLIKT=S.AUSGLEICH_KONFLIKT; AUSGLEICH_HOEHEN=S.ausgleichSteinHoehen;
   oeffneReparatur=S.oeffneReparatur;
   AX=S.AX;
+  PH=S.PH||null;
   wandLagenKanten=S.wandLagenKanten; lagenOberkanteMm=S.lagenOberkanteMm;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke; stangenFarbFolge=S.stangenFarbFolge; stangenLegende=S.stangenLegende;
@@ -2736,6 +2845,8 @@ window.__wpInit=function(){
   schraubeSvg=S.schraubeSvg;
   bindEvents();
   bindProdukte();
+  // [P-25] Zuletzt benutztes Prüferkürzel dieses Browsers vorbelegen (Bedienvorliebe).
+  if(store&&store.pruefKuerzel) $('pruefKuerzel').value=store.pruefKuerzel();
   // #144/#145 Namen und Beschreibungen der festen Bedienelemente stehen VOR dem ersten
   // Rendern — die gerenderten Zeilen bringen ihre eigenen mit.
   axBenennen();
@@ -2795,7 +2906,9 @@ window.__wpInit=function(){
   // ([G-16]) — dieselbe Ableitung, die der Read-only-Frischpfad und der Sammel-Editor nutzen.
   import { ROLLE_RECHNUNG, ausgleichSteinHoehen, geteiltAusSpeicher } from './shared/sembla-wandanlage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT, AX,
+  // [P-25] Prüfhinweise und Prüfvermerke — der gemeinsame, DOM-freie Baustein.
+  import * as PH from './shared/sembla-pruefhinweise.js';
+  window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT, AX, PH,
                     wandLagenKanten, lagenOberkanteMm,
                     ROLLE_RECHNUNG, AUSGLEICH_KONFLIKT, ausgleichSteinHoehen,
                     oeffneReparatur,

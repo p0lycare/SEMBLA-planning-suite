@@ -46,7 +46,10 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   // Anzeigerechteck: standardmaessig deckungsgleich mit dem viewBox (1000 breit, Hoehe offen ->
   // die Abbildung faellt auf die viewBox-Hoehe zurueck). Der #106-Abschnitt setzt `_rect`
   // ausdruecklich auf ein Rechteck mit Rand, Zoom und abweichendem Seitenverhaeltnis.
-  getBoundingClientRect(){ return this._rect || {left:0,width:1000}; } get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
+  getBoundingClientRect(){ return this._rect || {left:0,width:1000}; } get innerHTML(){return this._h;}
+  // Wie im Browser: innerHTML setzt auch den Textinhalt (Tags weg, Entitaeten aufgeloest) —
+  // seit [P-25] zeichnet Modul 1 die Warnliste als Zeilen mit Knoepfen statt als Text.
+  set innerHTML(v){this._h=v; this.textContent=String(v).replace(/<[^>]*>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');}
   // Der Reparaturdialog baut seinen Inhalt per innerHTML und greift danach ueber
   // Selektoren darauf zu. Das Double kann kein HTML parsen — es liefert je Selektor
   // DASSELBE Ersatzelement zurueck, damit Behandler und Fokus auf demselben Knoten
@@ -140,7 +143,9 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // #140: die kanonischen Lagenkanten und die eine Umrechnung Reihenzahl -> Hoehe —
   // dieselben Funktionen, aus denen Modul 7 seine z-Koordinaten bezieht ([D-4]).
   wandLagenKanten, lagenOberkanteMm: MONT.lagenOberkanteMm,
-  wirksameZwischenpunkte };
+  wirksameZwischenpunkte,
+  // [P-25] Prüfhinweise und Prüfvermerke — der gemeinsame Baustein, wie im Browser.
+  PH: await import("../../docs/shared/sembla-pruefhinweise.js") };
 
 eval(script);
 globalThis.window.__wpInit();
@@ -1479,6 +1484,10 @@ document.getElementById('modus').value='auto'; WP.run();
     && !/unzulässig|kein Anschluss in Feld 2–3/.test(warns));
   ok('[A-26] 250-mm-Wand: der Editorhinweis nennt die Kurzwand-Regel',
     /genau einer je Wand in Feld 1/.test(document.getElementById('dcHinweis').textContent));
+  // [P-25] Auch dieser Hinweis ist quittierbar — eigene Art, Abdruck aus den Befunddaten.
+  ok('[P-25] 250-mm-Wand: der Kurzwand-Hinweis hat einen Knopf „geprüft“ (eigene Art)',
+    document.getElementById('warns').innerHTML.includes('data-pruef="a26_deckenanschluss_kurzwand" data-fp="'
+      +globalThis.window.SEMBLA.PH.abdruckFuerArt(we,'a26_deckenanschluss_kurzwand')+'"'));
   ok('[A-26] 250-mm-Wand: genau eine Baugruppe Deckenanschluss in der Stueckliste',
     WP.deckenanschlusspunkte.length===1 && !('deckenanschluss_grid' in store.aktivesWandelement().prestress));
 }
@@ -4896,6 +4905,125 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
     zleg().includes('<i style="color:'+MONT.STUECK_FARBE.rest+'"></i>'+MONT.STUECK_LABEL.rest+' (100 mm)'));
   ok('[D-4] Modul 1 fuehrt keine Stangenlaenge im Seitencode', !/\b(1050|820)\b/.test(html));
   store.setzeKatalog(KATALOG); store.setzeAktiv(idA); globalThis.window.__wpInit();
+}
+
+// ---------------------------------------------------------------------------
+// [P-25] Prüfvermerk: Prüfhinweis mit Kürzel und Datum als „geprüft" markieren
+// ---------------------------------------------------------------------------
+// Am REALEN Pfad (Seitencode unter dem DOM-Mock, echte Speicherschicht): markieren → grau mit
+// Kürzel/Datum, bleibt nach Speichern/Laden; Wand ändern → wieder aktiv; Altbestand ohne Feld
+// = nichts geprüft; ein unzulässiges Kürzel wird benannt abgewiesen und schreibt nichts.
+{
+  const PH=await import("../../docs/shared/sembla-pruefhinweise.js");
+  const WARN=document.getElementById('warns'), KOPF=document.getElementById('pruefKopf');
+  const KZ=document.getElementById('pruefKuerzel'), MSG=document.getElementById('pruefMsg');
+  const H=document.getElementById('hgt'), BK=document.getElementById('brandklasse');
+  const ART='v9_ungehaltene_steine';
+  const wP=Object.assign(buildWall('Wand P25',2000,2600,[]),{wandtyp:'ohne_wind'});
+  const idP=store.speichere('Wand P25', wP);
+  store.setzeAktiv(idP); globalThis.window.__wpInit();
+  const gespeichert=()=>store.holeElement(idP).wandelement;
+  const fpAusHtml=art=>{ const m=WARN.innerHTML.match(new RegExp('data-pruef="'+art+'" data-fp="([0-9a-f]+)"')); return m&&m[1]; };
+  const klick=ds=>WARN.dispatch('click',{target:{dataset:ds}});
+  const geprueft=art=>new RegExp('class="ph ph-geprueft" data-art="'+art+'"').test(WARN.innerHTML);
+  const aktiv=art=>new RegExp('data-pruef="'+art+'"').test(WARN.innerHTML);
+
+  ok('[P-25] Altbestand ohne Feld: nichts geprüft, kein [V-9]-Hinweis, kein Feld geschrieben',
+    !('pruefvermerke' in gespeichert()) && !aktiv(ART) && !/ph-geprueft/.test(WARN.innerHTML));
+  // Manuelle Spannachse (nur eine) ⇒ Steine ohne Achse [V-9]/[V-2] — ein echter Prüfhinweis.
+  WP.setManualCols([1]);
+  ok('[P-25] Prüfhinweis [V-9] steht aktiv mit Knopf „geprüft“, Kürzelfeld sichtbar',
+    aktiv(ART) && /Spannachsen \[V-9\]/.test(WARN.textContent) && KOPF.hidden===false
+    && !geprueft(ART) && WP.RESULT.wandelement.validation.ungehaltene_steine.length>0);
+  ok('[P-25] Fehler (nicht baubar) haben keinen Knopf — Versatz/Maß/Baubarkeit/[A-29]',
+    /fehler\('⚠ Ungültiges Maß/.test(html) && /fehler\('⚠ Versatz-Verletzung/.test(html)
+    && /fehler\('⚠ Wand strukturell nicht baubar/.test(html) && /fehler\('⚠ Bodenblech \[A-29\]/.test(html));
+  const fp0=fpAusHtml(ART);
+  ok('[P-25] Fingerabdruck im Knopf = Fingerabdruck des Bausteins aus dem Wandelement',
+    !!fp0 && fp0===PH.abdruckFuerArt(WP.RESULT.wandelement, ART));
+
+  // Ohne Kürzel: benannt abgewiesen, nichts geschrieben.
+  KZ.value='';
+  klick({pruef:ART, fp:fp0});
+  ok('[P-25] ohne Kürzel: benannt abgewiesen, kein Vermerk gespeichert, Hinweis bleibt aktiv',
+    /Kürzel fehlt/.test(MSG.textContent) && !('pruefvermerke' in gespeichert()) && aktiv(ART)
+    && KZ.getAttribute('aria-invalid')==='true');
+  KZ.value='viel zu lang';
+  klick({pruef:ART, fp:fp0});
+  ok('[P-25] unzulässiges Kürzel: abgewiesen statt gekürzt',
+    /zu lang|unzulässige Zeichen/.test(MSG.textContent) && !('pruefvermerke' in gespeichert()));
+
+  // Markieren.
+  KZ.value=' FB ';
+  klick({pruef:ART, fp:fp0});
+  const heute=PH.heute();
+  const vm=gespeichert().pruefvermerke;
+  ok('[P-25] markiert: Vermerk mit Art, Abdruck, Kürzel und heutigem Datum am Wandelement gespeichert',
+    Array.isArray(vm) && vm.length===1 && vm[0].art===ART && vm[0].fingerabdruck===fp0
+    && vm[0].kuerzel==='FB' && vm[0].datum===heute && MSG.textContent==='');
+  ok('[P-25] markiert: Hinweis bleibt grau sichtbar mit „geprüft von FB am …“ und Knopf zum Aufheben',
+    geprueft(ART) && WARN.innerHTML.includes('geprüft von FB am '+PH.datumText(heute))
+    && /Spannachsen \[V-9\]/.test(WARN.textContent) && /data-pruef-auf="v9_ungehaltene_steine"/.test(WARN.innerHTML)
+    && !aktiv(ART));
+  ok('[P-25] der Vermerk ist ohne Seite lesbar (Geschossplan): pruefhinweise() meldet ihn als geprüft',
+    PH.pruefhinweise(gespeichert()).some(h=>h.art===ART && h.vermerk && h.vermerk.kuerzel==='FB'));
+  ok('[P-25] das Kürzel ist als Bedienvorliebe gemerkt (nicht in Planungsdaten)',
+    store.pruefKuerzel()==='FB');
+
+  // Speichern/Laden: frischer Seitenaufruf.
+  KZ.value='';
+  globalThis.window.__wpInit();
+  ok('[P-25] nach dem Laden: weiterhin grau mit Kürzel/Datum, Kürzelfeld vorbelegt',
+    geprueft(ART) && WARN.innerHTML.includes('geprüft von FB am') && KZ.value==='FB');
+  // Bloßes Laden schreibt nichts um.
+  ok('[P-25] Laden schreibt den Vermerk nicht um', JSON.stringify(gespeichert().pruefvermerke)===JSON.stringify(vm));
+
+  // Unabhängiges Merkmal (Brandschutz) ändert die Wandgeometrie nicht — Vermerk bleibt gültig.
+  BK.value='F30'; BK.dispatch('change');
+  ok('[P-25] Brandschutz F30 ist keine Wandänderung im Sinne des Vermerks: bleibt geprüft',
+    gespeichert().brandklasse==='F30' && geprueft(ART));
+  BK.value='F0'; BK.dispatch('change');
+
+  // Wand ändern: Höhe 2600 → 2800 ⇒ Befund/Geometrie anders ⇒ wieder aktiv.
+  H.value='2800'; H.dispatch('input');
+  ok('[P-25] Wand geändert (Höhe): Hinweis wieder AKTIV mit Knopf, nicht grau',
+    WP.RESULT.wandelement.height_mm===2800 && aktiv(ART) && !geprueft(ART)
+    && fpAusHtml(ART)!==fp0);
+  ok('[P-25] … der alte Vermerk bleibt gespeichert (an den alten Stand gebunden), wirkt aber nicht',
+    gespeichert().pruefvermerke.length===1 && gespeichert().pruefvermerke[0].fingerabdruck===fp0);
+  // Zurück auf den geprüften Stand: derselbe Abdruck ⇒ wieder geprüft (deterministisch).
+  H.value='2600'; H.dispatch('input');
+  ok('[P-25] zurück auf den geprüften Stand: derselbe Fingerabdruck ⇒ wieder grau', geprueft(ART));
+
+  // Eine weitere Spannachse ändert den Befund (andere ungehaltene Steine) ⇒ wieder aktiv.
+  WP.setManualCols([1,8]);
+  ok('[P-25] Hinweis geändert (andere ungehaltene Steine): wieder AKTIV', aktiv(ART) && !geprueft(ART));
+  WP.setManualCols([1]);
+  ok('[P-25] … und zurück: wieder geprüft', geprueft(ART));
+
+  // Aufheben.
+  klick({pruefAuf:ART});
+  ok('[P-25] Prüfung aufheben: Hinweis wieder aktiv, Feld am Wandelement entfällt',
+    aktiv(ART) && !geprueft(ART) && !('pruefvermerke' in gespeichert()));
+
+  // Ursache weg ⇒ Hinweis verschwindet ganz (es gibt nichts zu prüfen).
+  KZ.value='FB'; klick({pruef:ART, fp:fpAusHtml(ART)});
+  WP.setManualCols(null);
+  ok('[P-25] Ursache weg (Auto-Achsen): der [V-9]-Hinweis ist verschwunden',
+    !/v9_ungehaltene_steine/.test(WARN.innerHTML) && !/Spannachsen \[V-9\]/.test(WARN.textContent));
+  // Kürzelfeld nur, wenn es etwas zu quittieren gibt.
+  ok('[P-25] Kürzelfeld folgt den quittierbaren Hinweisen',
+    KOPF.hidden===!/data-pruef(-auf)?=/.test(WARN.innerHTML+document.getElementById('interlockWarns').innerHTML));
+
+  // Ein unzulässiger gespeicherter Vermerk zählt nicht als Prüfung und wird benannt, nicht gelöscht.
+  const wU=Object.assign(buildWall('Wand P25b',2000,2600,[]),{wandtyp:'ohne_wind',
+    prestress:{...buildWall('x',2000,2600,[]).prestress, columns_grid:[1]},
+    pruefvermerke:[{art:ART, fingerabdruck:'x', kuerzel:'', datum:'2026-13-40'}]});
+  const idU=store.speichere('Wand P25b', wU); store.setzeAktiv(idU); globalThis.window.__wpInit();
+  ok('[P-25] unzulässiger gespeicherter Vermerk: Hinweis aktiv, benannt, nicht gelöscht',
+    aktiv(ART) && /unzulässig/.test(document.getElementById('pruefUngueltig').textContent)
+    && store.holeElement(idU).wandelement.pruefvermerke.length===1);
+  store.setzeAktiv(idA); globalThis.window.__wpInit();
 }
 
 // Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.

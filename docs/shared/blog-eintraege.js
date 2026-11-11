@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261111-02",
+    datum: "2026-11-11",
+    typ: "feature",
+    issue: 122,
+    titel: "Modul 1: Prüfhinweise lassen sich mit Kürzel und Datum als „geprüft“ markieren",
+    testbitte: "Wand mit Prüfhinweis öffnen (z. B. manuelle Spannachse), Kürzel eintragen, „geprüft“ klicken: Hinweis grau mit "
+      + "„geprüft von … am …“; Wandhöhe ändern: wieder aktiv; Zeichnungsblatt unverändert",
+  },
+  {
     id: "chg-20261111-01",
     datum: "2026-11-11",
     typ: "feature",
