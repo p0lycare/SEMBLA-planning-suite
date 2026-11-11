@@ -10,6 +10,23 @@
   .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:10px;padding:16px 18px}
   .controls{width:350px;flex:0 0 350px}
   .stage{flex:1 1 560px;min-width:440px}
+  /* Linkes Bedienpanel scrollt separat (Todoist 6hxPxWVc9GPFQHX5, Felix): das Panel bleibt unter
+     der Kopfleiste angeheftet und hat eine eigene Scrollleiste, damit die Wandzeichnung sichtbar
+     bleibt, waehrend man in Wand/Oeffnungen/Spannachsen/Zwischenspannpunkte … nach unten geht.
+     Die rechte Seite (.stage) scrollt unveraendert mit der Seite; die Zeichnung wird NICHT
+     angeheftet, `--planh` der .planbox bleibt deshalb unberuehrt. `--sb-navh` ist die gemessene
+     Hoehe der (sticky) Kopfleiste — sie bricht in schmalen Fenstern zweizeilig um; der Rueckfall
+     46px ist die einzeilige Hoehe wie in geschossplan.html. `overscroll-behavior:contain` haelt
+     das Scrollen am Panelende im Panel, sonst liefe die Seite mit und naehme die Zeichnung mit.
+     Ab 980px liegt das Panel neben der Zeichnung (350 + 18 + 560 + Rand); darunter bricht .wrap
+     um, und es gilt das bisherige Verhalten ohne eigenes Scrollen. Die Produkt-Dropdowns
+     (`details.pdd`) klappen im Fluss auf und werden vom Scrollbereich nicht abgeschnitten;
+     Tooltips und der Reparaturdialog liegen `position:fixed` ausserhalb. */
+  @media (min-width:980px){
+    .controls{position:sticky;top:calc(var(--sb-navh,46px) + 18px);
+      max-height:calc(100vh - var(--sb-navh,46px) - 36px);overflow-y:auto;
+      overscroll-behavior:contain;scrollbar-gutter:stable}
+  }
   h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--sb-muted);margin:0 0 10px}
   .grp{margin-bottom:13px}
   .grp h3{font-size:12.5px;margin:0 0 6px;font-weight:650;border-bottom:1px solid var(--sb-line);padding-bottom:4px}
@@ -2928,6 +2945,12 @@ window.__wpInit=function(){
   AX.stilEinhaengen();
   AX.tooltips();
   mountNavbar(1);
+  // Hoehe der sticky Kopfleiste fuer das separat scrollende Bedienpanel (`--sb-navh`, s. CSS
+  // `.controls`). Gemessen statt fest, weil die Leiste in schmaleren Fenstern umbricht.
+  { const nav = document.querySelector('.sb-nav');
+    const setzeNavh = () => { if (nav) document.documentElement.style.setProperty('--sb-navh', nav.offsetHeight + 'px'); };
+    setzeNavh();
+    if (nav && typeof ResizeObserver === 'function') new ResizeObserver(setzeNavh).observe(nav); }
   window.__wpInit();
 </script>
 </body>

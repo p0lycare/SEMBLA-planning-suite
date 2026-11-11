@@ -603,6 +603,26 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
       && t.includes('fill="#5b6673"'); })());
 }
 
+// ---- Linkes Bedienpanel scrollt separat (Todoist 6hxPxWVc9GPFQHX5, zu #100) ---------
+// Gegen die ECHTE HTML-Quelle: nur das Panel (.controls) ist angeheftet und scrollt selbst,
+// und nur im breiten Layout; die Zeichnung (.stage/.planbox) bleibt im Seitenfluss.
+{
+  const media=(html.match(/@media \(min-width:980px\)\{([\s\S]*?)\n  \}/)||['',''])[1];
+  const ctrl=(media.match(/\.controls\{[^}]*\}/)||[''])[0];
+  ok('[Panel] .controls ist nur im breiten Layout angeheftet und scrollt selbst',
+    /position:sticky/.test(ctrl) && /overflow-y:auto/.test(ctrl)
+    && /max-height:calc\(100vh - var\(--sb-navh,46px\)/.test(ctrl)
+    && /top:calc\(var\(--sb-navh,46px\)/.test(ctrl) && /overscroll-behavior:contain/.test(ctrl));
+  ok('[Panel] ausserhalb der Media Query bleibt .controls ohne eigenes Scrollen', (()=>{
+    const basis=(html.match(/\n  \.controls\{[^}]*\}/)||[''])[0];
+    return basis && !/sticky|overflow/.test(basis); })());
+  ok('[Panel] Zeichnung und Stage werden nicht angeheftet',
+    (html.match(/\.(stage|planbox)\{[^}]*\}/g)||[]).length>=2
+    && (html.match(/\.(stage|planbox)\{[^}]*\}/g)||[]).every(r=>!/sticky|position:fixed/.test(r)));
+  ok('[Panel] die Kopfleistenhoehe wird gemessen und als --sb-navh gesetzt',
+    /setProperty\('--sb-navh', nav\.offsetHeight \+ 'px'\)/.test(html) && /new ResizeObserver\(setzeNavh\)/.test(html));
+}
+
 // ---- Issue #100: Wandansicht passt ins Fenster und laesst sich zoomen ---------------
 // Gefahren wird der ECHTE Bedienpfad: die im Markup sichtbaren Schalter werden geklickt und
 // die Fenstergroessenaenderung ueber den echten window-Hoerer ausgeloest. Markup und CSS

@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261111-03",
+    datum: "2026-11-11",
+    typ: "feature",
+    issue: 100,
+    titel: "Modul 1: das linke Bedienpanel scrollt separat, die Wandzeichnung bleibt dabei sichtbar",
+    testbitte: "Modul 1 im breiten Fenster öffnen, im linken Panel bis zu den Zwischenspannpunkten scrollen: Zeichnung bleibt "
+      + "stehen, Panel hat eigene Scrollleiste; im schmalen Fenster (Panel über der Zeichnung) scrollt alles wie bisher",
+  },
+  {
     id: "chg-20261111-02",
     datum: "2026-11-11",
     typ: "feature",
