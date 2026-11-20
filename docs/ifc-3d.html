@@ -56,8 +56,9 @@
     <div class="row"><button id="objClear">Geometrie entfernen</button></div>
     <div class="hint" id="objStatus"></div>
     <div class="hint">Echte Steingeometrie ist nicht im Werkzeug enthalten. Lade <b>i2_SEMBLA.obj</b> und
-      <b>i3_SEMBLA.obj</b> einmalig — sie bleiben nur lokal in diesem Browser (localStorage). Die geladene
-      Geometrie fließt auch in den zentralen IFC4-Export („Start") ein.</div>
+      <b>i3_SEMBLA.obj</b> einmalig — sie bleiben nur lokal in diesem Browser (localStorage) und wirken
+      nur auf diese 3D-Vorschau. Die IFC4-Datei der Wand entsteht im Export von „Start" (Modul&nbsp;0,
+      Häkchen „3D-Modell (IFC4 je Wand)") — dort mit vereinfachter Quadergeometrie, ohne die OBJ-Dateien.</div>
   </div>
 
   <div class="stage">
@@ -324,7 +325,7 @@ window.__ifcInit=function(){
   THREE_OK = (typeof THREE!=='undefined');
   if(THREE_OK){ try{ initThree(); }catch(e){ THREE_OK=false; } }
   if(!THREE_OK){ const m=$('stagemsg'); if(m){ m.style.display='flex';
-    m.textContent='3D-Ansicht nicht verfügbar (Three.js wird online per CDN geladen). Der IFC4-Export läuft unabhängig davon zentral über „Start".'; } }
+    m.textContent='3D-Ansicht nicht verfügbar (Three.js wird online per CDN geladen). Die IFC4-Datei je Wand entsteht unabhängig davon im Export von „Start" (Modul 0).'; } }
   bindEvents();
   objRestore();
   setupStoreSync();

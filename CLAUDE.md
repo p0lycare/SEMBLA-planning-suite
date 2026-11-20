@@ -1093,6 +1093,11 @@ Projekten samt Katalogspeicher (v5), die Lage in Millimetern (v6) und die Wandnu
 `sembla-export.js` die gewählten Dateien und packt sie via `zip.js` (STORE+CRC32, keine Lib) in ein ZIP.
 Projekt-Datei = `{format:'SEMBLA-Projekt',version:2,name,wandelement,eingaben}` (`store.projektObjekt`);
 der Import versteht v2 + Alt-Bundle. Die einzelnen Module haben **keine eigenen Datei-Buttons** mehr.
+**IFC4 je Wand** ist eine Option von `EXPORT_OPTIONEN` auf **jeder** Ebene (`ifc`, Ordner
+`ifc/<Name>__<id>.ifc`, nicht vorausgewählt): mit #67 war sie versehentlich entfallen und ist seit
+2026-11-20 wieder da. Gebaut wird über `ifcText` → `wandelementToIfc` aus dem frischen Elementleser,
+ohne OBJ-Geometrie aus Modul 6; fehlende Wandelemente werden benannt. Ein **Gesamtmodell** des
+Geschosses gibt es bewusst nicht (offen).
 
 Das Wandelement stammt aus dem Core (`buildWall`): Länge/Höhe/Öffnungen → Tiling (i3-maximal),
 Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Rastereinheit (125 mm),

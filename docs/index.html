@@ -461,8 +461,8 @@
       </div>
       <div style="margin-top:3px" id="exp-format-hinweis">Gilt für Baustellenstückliste samt Einzelteilliste,
         Gesamtstückliste und Matrix-Stückliste dieses Laufs — gleicher Inhalt, gleiche
-        Reihenfolge, in Excel mit echten Zahlenzellen. Die übrigen Dateien (JSON, HTML,
-        SVG, IFC, PDF, Einkaufsliste als CSV) bleiben unberührt.</div>
+        Reihenfolge, in Excel mit echten Zahlenzellen. Die übrigen Dateien (JSON, IFC, PDF,
+        Einkaufsliste als CSV) bleiben unberührt.</div>
     </div>
     <!-- Zeichnungen als PDF (#98/#107). Ausgelöst wird das hier, im EINEN Exportdialog —
          die frühere eigene Projekt-Schaltfläche ist ersatzlos entfallen: sie stand neben
@@ -545,7 +545,8 @@
       3:'Statischer Nachweis der Anschlüsse und des Hebezustands.',
       4:'Baustellenstückliste: real einzubauende Teile in Fertigmaßen, Gewindestangenstücke mit Einbauteil-ID.',
       5:'Lagenweise Montageanleitung mit Vorspann-Schritten.',
-      6:'Experimentell: 3D-Vorschau und IFC-Viewer/-Export (OBJ-Upload).',
+      6:'Experimentell: 3D-Vorschau der Wand, optional mit echter Steingeometrie (OBJ-Upload). '
+        + 'Die IFC4-Datei je Wand kommt aus dem Export hier in Modul 0.',
       7:'Technische Zeichnung: maßstabsgetreue Wandabwicklung mit Bemaßung und Schriftfeld (A3/A4).',
       9:'Lageplan eines Geschosses: technische Draufsicht aller Wände mit Maßen, Legende und '
         + 'Schriftfeld (A3/A4) — reine Ausgabe, gezeichnet wird im Geschossplaner.',
@@ -2177,6 +2178,7 @@
     waende: ['Wandelementdateien (JSON je Wand)', 'Je enthaltener Wand eine SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben). Fehlende Wandelemente werden benannt, nie ersetzt.'],
     wand: ['Wanddatei (JSON)', 'Diese Wand als SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben) — hier wieder importierbar.'],
     katalog: ['Bauteilkatalog (JSON)', 'Der dem Projekt zugeordnete Katalog als eigene SEMBLA-Bauteilkatalog-Datei — nie in Mappe oder Wanddatei eingebettet.'],
+    ifc: ['3D-Modell (IFC4 je Wand)', 'Je Wand mit Wandelement eine IFC4-Datei für CAD/BIM-Programme (Ordner <b>ifc/</b>) — Wandkörper mit Öffnungen und jeder Stein als Bauteil, vereinfachte Quadergeometrie. Ein gemeinsames Modell des ganzen Geschosses entsteht nicht. Fehlende Wandelemente werden benannt.'],
     stueckliste: ['Baustellenstückliste (2× CSV)', 'Real einzubauende Teile in Fertigmaßen — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs. Die <b>Mengenfassung</b> der aggregierten Liste wird unten gewählt.'],
   };
 
@@ -2214,8 +2216,12 @@
     expKontext = kontext;
     // Der NAME des Häkchens ist die kurze Dateibezeichnung; der Erklärabsatz steht
     // daneben und wird als BESCHREIBUNG verknüpft — nie in den Namen gezogen (#144).
+    // Vorausgewählt ist alles außer IFC: die 3D-Modelle sind eine eigene Ausgabe für
+    // CAD/BIM und blähen das ZIP je Wand auf — wer sie braucht, hakt sie an. Wie die
+    // übrigen Ausgabeentscheidungen startet das bei JEDEM Öffnen neu.
+    const EXP_AUS = new Set(['ifc']);
     $('exp-opts').innerHTML = ARCHIV.exportOptionen(kontext.ebene).map(o =>
-      `<label class="opt"><input type="checkbox" value="${o}" checked`
+      `<label class="opt"><input type="checkbox" value="${o}"${EXP_AUS.has(o) ? '' : ' checked'}`
       + ` aria-label="${esc(EXP_TEXTE[o][0])}" aria-describedby="exp-d-${o}">`
       + `<span><span class="t">${EXP_TEXTE[o][0]}</span><br>`
       + `<span class="d" id="exp-d-${o}">${EXP_TEXTE[o][1]}</span></span></label>`

@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261120-01",
+    datum: "2026-11-20",
+    typ: "fix",
+    issue: 67,
+    titel: "Export in Modul 0: 3D-Modell (IFC4) je Wand ist wieder wählbar – auf Wand-, Geschoss-, Gebäude- und Projektebene",
+    testbitte: "Wand oder Geschoss → „Exportieren“, Häkchen „3D-Modell (IFC4 je Wand)“ setzen: im ZIP liegt unter ifc/ je Wand eine "
+      + ".ifc-Datei; in einem IFC-Viewer öffnen – Wand mit Öffnungen und Steinen sichtbar",
+  },
+  {
     id: "chg-20261111-03",
     datum: "2026-11-11",
     typ: "feature",

@@ -32,8 +32,9 @@ import { wandelementAktualisiert } from "../../docs/shared/sembla-wandanlage.js"
 import * as ENGINE from "../../docs/shared/sembla-engine.js";
 import {
   EXPORT_OPTIONEN, exportOptionen, geschossTeilmappe, geschossPfad, gesamtMengenLuecken,
-  hierarchieExport, wandPfad, sicherStamm,
+  hierarchieExport, wandPfad, sicherStamm, ifcPfad, ORDNER_IFC,
 } from "../../docs/shared/sembla-archiv.js";
+import { wandelementToIfc } from "../../docs/shared/sembla-ifc.js";
 
 const checks = [];
 const ok = (n, c) => checks.push([n, !!c]);
@@ -394,19 +395,20 @@ const P = (ueber = {}) => ({
 {
   // Seit #132 traegt die PROJEKTEBENE zusaetzlich die Matrix-Stückliste; die Gebaeudeebene
   // bleibt ohne sie — die Matrix ist eine projektweite Ausgabe.
-  ok("#67/#132 Projektebene: Mappe, Gesamtstueckliste, Matrix, Geschosse, Waende, Katalog",
-    JSON.stringify(EXPORT_OPTIONEN.projekt) === JSON.stringify(["mappe", "gesamt", "matrix", "geschosse", "waende", "katalog"]));
+  // IFC4 je Wand ist seit dem Nachtrag zu #67 wieder auf JEDER Ebene waehlbar.
+  ok("#67/#132 Projektebene: Mappe, Gesamtstueckliste, Matrix, Geschosse, Waende, IFC, Katalog",
+    JSON.stringify(EXPORT_OPTIONEN.projekt) === JSON.stringify(["mappe", "gesamt", "matrix", "geschosse", "waende", "ifc", "katalog"]));
   ok("#67/#132 Gebaeudeebene: wie Projekt, aber OHNE Matrix",
-    JSON.stringify(EXPORT_OPTIONEN.gebaeude) === JSON.stringify(["mappe", "gesamt", "geschosse", "waende", "katalog"]));
-  ok("#67 Geschossebene: Geschossdaten, Gesamtstueckliste, Waende — keine Projektmappe",
-    JSON.stringify(EXPORT_OPTIONEN.geschoss) === JSON.stringify(["geschoss", "gesamt", "waende"]));
-  ok("#67 Wandebene: Wanddatei und Baustellenstueckliste",
-    JSON.stringify(EXPORT_OPTIONEN.wand) === JSON.stringify(["wand", "stueckliste"]));
+    JSON.stringify(EXPORT_OPTIONEN.gebaeude) === JSON.stringify(["mappe", "gesamt", "geschosse", "waende", "ifc", "katalog"]));
+  ok("#67 Geschossebene: Geschossdaten, Gesamtstueckliste, Waende, IFC — keine Projektmappe",
+    JSON.stringify(EXPORT_OPTIONEN.geschoss) === JSON.stringify(["geschoss", "gesamt", "waende", "ifc"]));
+  ok("#67 Wandebene: Wanddatei, Baustellenstueckliste und IFC",
+    JSON.stringify(EXPORT_OPTIONEN.wand) === JSON.stringify(["wand", "stueckliste", "ifc"]));
   const alleOpt = Object.values(EXPORT_OPTIONEN).flat();
   ok("#67 zyklusfremde Ausgaben sind auf KEINER Ebene waehlbar",
-    ["nachweis", "montage", "zeichnung", "ifc", "zuschnitt"].every((o) => !alleOpt.includes(o)));
+    ["nachweis", "montage", "zeichnung", "zuschnitt"].every((o) => !alleOpt.includes(o)));
   ok("#67 exportOptionen liefert eine Kopie",
-    (() => { const a = exportOptionen("wand"); a.push("x"); return EXPORT_OPTIONEN.wand.length === 2; })());
+    (() => { const a = exportOptionen("wand"); a.push("x"); return EXPORT_OPTIONEN.wand.length === 3; })());
   const wirft = (fn, muster) => { try { fn(); return false; } catch (e) { return muster.test(e.message); } };
   ok("#67 unzulaessige Auswahl wird abgewiesen statt still uebergangen",
     wirft(() => hierarchieExport(["mappe"], P({ ebene: "geschoss" })), /gibt es auf der Ebene/)
@@ -533,6 +535,67 @@ const P = (ueber = {}) => ({
   const stWeg = hierarchieExport(["stueckliste"], P({ ebene: "wand", wandId: "w-verwaist", wandName: "Verwaiste Wand", mappe: ML }));
   ok("#67 Baustellenstueckliste ohne Wandelement: Luecke statt erfundener Datei",
     stWeg.dateien.length === 0 && /L-4/.test(stWeg.luecken[0]));
+}
+
+// ---- 10a. IFC4 je Wand — wieder im zentralen Export (Nachtrag zu #67) ---------------------
+// Mit #67 war das Haekchen „3D-Modell (IFC4)“ versehentlich entfallen. Es kommt auf JEDER
+// Ebene zurueck — immer als eine Datei JE WAND unter ifc/, aus dem bestehenden Wandpfad
+// (wandelementToIfc), nie als Gesamtmodell. Fehlende Wandelemente werden benannt.
+{
+  // GUIDs sind zufaellig — verglichen wird deshalb der Inhalt ohne die GUID-Literale.
+  const ohneGuid = (t) => String(t).replace(/'[0-9A-Za-z_$]{22}'/g, "'GUID'")
+    .replace(/FILE_NAME\([^;]*;/, "FILE_NAME(…);");
+  const istIfc4 = (t) => /^ISO-10303-21;/.test(t) && /FILE_SCHEMA\(\('IFC4'\)\)/.test(t)
+    && /IFCWALLSTANDARDCASE/.test(t) && /END-ISO-10303-21;\s*$/.test(t);
+
+  ok("#67-IFC ifcPfad: Ordner ifc/, Name__Kennung.ifc wie die Wanddateien",
+    ORDNER_IFC === "ifc" && ifcPfad({ id: "w-a", name: "Wand EG/1" }) === "ifc/" + sicherStamm("Wand EG/1") + "__w-a.ifc");
+
+  const ep = hierarchieExport(["ifc"], P());
+  ok("#67-IFC Projektebene: je Wand genau eine IFC4-Datei unter ifc/, keine Luecke",
+    ep.dateien.length === 4 && ep.luecken.length === 0
+    && ["w-a", "w-b", "w-c", "w-d"].every((id) => ep.dateien.some((d) =>
+      d.name === ifcPfad({ id, name: ELEMENTE[id].name }))) && ep.dateien.every((d) => istIfc4(d.data)));
+  ok("#67-IFC der Inhalt ist der bestehende Wandpfad (wandelementToIfc) — kein zweiter IFC-Pfad",
+    ["w-a", "w-d"].every((id) => {
+      const f = ep.dateien.find((d) => d.name === ifcPfad({ id, name: ELEMENTE[id].name }));
+      return f && ohneGuid(f.data) === ohneGuid(wandelementToIfc(ELEMENTE[id].wandelement));
+    }));
+  ok("#67-IFC kein Gesamtmodell: keine IFC-Datei ausserhalb von ifc/",
+    !ep.dateien.some((d) => /\.ifc$/.test(d.name) && !d.name.startsWith(ORDNER_IFC + "/")));
+  const gb = hierarchieExport(["ifc"], P({ ebene: "gebaeude" }));
+  ok("#67-IFC Gebaeudeebene: genau die Waende des Gebaeudes",
+    gb.dateien.length === 3 && !gb.dateien.some((d) => d.name.includes("w-d")));
+  const gs = hierarchieExport(["waende", "ifc"], P({ ebene: "geschoss" }));
+  ok("#67-IFC Geschossebene: neben jeder Wanddatei die IFC-Datei derselben Wand",
+    gs.dateien.length === 4 && ["w-a", "w-b"].every((id) =>
+      gs.dateien.some((d) => d.name === wandPfad({ id, name: ELEMENTE[id].name }))
+      && gs.dateien.some((d) => d.name === ifcPfad({ id, name: ELEMENTE[id].name }))));
+  const ew = hierarchieExport(["wand", "stueckliste", "ifc"], P({ ebene: "wand" }));
+  ok("#67-IFC Wandebene: die IFC-Datei steht hinter der Stueckliste, die uebrigen Dateien bleiben",
+    ew.dateien.length === 5 && ew.dateien[4].name === ifcPfad({ id: "w-a", name: "Wand_EG-1" })
+    && istIfc4(ew.dateien[4].data) && ew.luecken.length === 0);
+  ok("#67-IFC eine unverortete Wand bekommt ihre IFC-Datei auch ohne Mappe", (() => {
+    const solo = hierarchieExport(["ifc"], P({ ebene: "wand", mappe: null }));
+    return solo.dateien.length === 1 && solo.luecken.length === 0 && istIfc4(solo.dateien[0].data);
+  })());
+  ok("#67-IFC ohne Haekchen entsteht keine IFC-Datei (bestehende Exporte bleiben gleich)",
+    !hierarchieExport(["mappe", "gesamt", "geschosse", "waende", "katalog"], P()).dateien
+      .some((d) => /\.ifc$/.test(d.name)));
+
+  // Verwaiste Wand: benannt, nicht still weggelassen — die uebrigen Waende entstehen.
+  const ML = setzeWand(MK, EG, { id: "w-verwaist", name: "Verwaiste Wand" });
+  const ev = hierarchieExport(["ifc"], P({ mappe: ML, ebene: "geschoss" }));
+  ok("#67-IFC fehlendes Wandelement: keine Datei, Luecke nennt Wand, IFC und [L-4]",
+    ev.dateien.length === 2 && !ev.dateien.some((d) => d.name.includes("w-verwaist"))
+    && ev.luecken.length === 1 && /„Wand_EG-4“/.test(ev.luecken[0])
+    && /keine IFC-Datei/.test(ev.luecken[0]) && /L-4/.test(ev.luecken[0]));
+  // Ein Wandelement, das wandelementToIfc ablehnt: benannt, der Lauf bricht nicht ab.
+  const kaputt = hierarchieExport(["ifc"], P({ ebene: "geschoss",
+    holeElement: (id) => id === "w-a" ? { name: "x", wandelement: { name: "x" } } : leser().holeElement(id) }));
+  ok("#67-IFC nicht umsetzbares Wandelement: benannt, die uebrigen Waende entstehen",
+    kaputt.dateien.length === 1 && kaputt.dateien[0].name === ifcPfad({ id: "w-b", name: ELEMENTE["w-b"].name })
+    && kaputt.luecken.length === 1 && /IFC4 nicht erzeugbar/.test(kaputt.luecken[0]));
 }
 
 // ==== 11. Mengenfassung der Gesamtstückliste ([P-20], Issue #81) ==========================

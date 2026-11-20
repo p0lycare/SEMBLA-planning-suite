@@ -365,14 +365,15 @@ ok('kein mitWind mehr in den Standard-Eingaben', !('mitWind' in p.eingaben.stati
 
 // --- 4) Zentraler hierarchischer Export (#67): Wandebene ---------------------
 // Der Dialog bietet je Ebene NUR die passenden Dateien; die zyklusfremden Ausgaben
-// (Nachweis, Montage, Zeichnung, IFC, Lattenzuschnitt) sind aus dem Dialog raus.
+// (Nachweis, Montage, Zeichnung, Lattenzuschnitt) sind aus dem Dialog raus. IFC war mit #67
+// versehentlich mit entfallen und ist seit dem Nachtrag wieder da (je Wand, alle Ebenen).
 ok('#67 keine zyklusfremden Haekchen mehr im Dialog-Markup',
   !/value="nachweis"/.test(html) && !/value="zeichnung"/.test(html)
-  && !/value="montage"/.test(html) && !/value="ifc"/.test(html) && !/value="zuschnitt"/.test(html));
+  && !/value="montage"/.test(html) && !/value="zuschnitt"/.test(html));
 ok('#67 der Dialog rendert seine Optionen je Ebene, ohne Ebenen-Auswahlfeld',
   /id="exp-opts"/.test(html) && !/id="exp-ebene"/.test(html));
-ok('#67 Wandebene bietet genau Wanddatei und Baustellenstueckliste',
-  JSON.stringify(ARCHIV.exportOptionen('wand')) === JSON.stringify(['wand', 'stueckliste']));
+ok('#67 Wandebene bietet genau Wanddatei, Baustellenstueckliste und IFC',
+  JSON.stringify(ARCHIV.exportOptionen('wand')) === JSON.stringify(['wand', 'stueckliste', 'ifc']));
 ok('#67 EIN Exportzugang je Eintrag: keine Alt-Knoepfe mehr im Markup',
   !/prj-zip/.test(html) && !/prj-json/.test(html) && !/prj-gesamt/.test(html) && !/gs-gesamt/.test(html)
   // knopf() baut das data-act-Attribut erst zur Laufzeit — im Quelltext stehen die Schluessel.
@@ -410,6 +411,28 @@ ok('#67 ZIP-Name folgt Ebene und Wand',
   store.holeElement(aktivId).name === 'Wand_G1-3'
   && zipCalls.length && zipCalls[0].name === 'SEMBLA_Export_Wand_' + ARCHIV.sicherStamm('Wand_G1-3') + '.zip');
 ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
+
+// --- 4-IFC) Nachtrag zu #67: IFC4 je Wand ist wieder im Dialog -----------------------------
+// Echter Pfad: Baumknopf -> Dialog -> Haekchen „3D-Modell (IFC4 je Wand)“ -> ZIP. Das Haekchen
+// ist sichtbar, aber NICHT vorausgewaehlt — bestehende Exporte bleiben so unveraendert.
+{
+  zipCalls.length = 0;
+  baumExportCsv('wand-export', aktivId);
+  const opts = $('exp-opts').innerHTML;
+  ok('#67-IFC Wanddialog zeigt das IFC-Haekchen mit Namen, nicht vorausgewaehlt',
+    /<input type="checkbox" value="ifc" aria-label="3D-Modell \(IFC4 je Wand\)"/.test(opts)
+    && /value="wand" checked/.test(opts) && /value="stueckliste" checked/.test(opts));
+  $('exp-overlay')._sel = [{ value: 'ifc' }];
+  $('exp-go').dispatch('click');
+  const f = zipCalls.length ? zipCalls[0].files : [];
+  ok('#67-IFC Wandebene: genau eine IFC4-Datei unter ifc/, aus dem bestehenden Wandpfad',
+    f.length === 1 && f[0].name === ARCHIV.ifcPfad({ id: aktivId, name: store.holeElement(aktivId).name })
+    && /^ISO-10303-21;/.test(f[0].data) && /FILE_SCHEMA\(\('IFC4'\)\)/.test(f[0].data)
+    && /IFCWALLSTANDARDCASE/.test(f[0].data)
+    && f[0].data.split('IFCBUILDINGELEMENTPROXY').length - 1
+      === store.holeElement(aktivId).wandelement.courses.reduce((n, c) => n + c.stones.length, 0));
+  ok('#67-IFC der IFC-Export setzt keinen Zeiger um', zeigerStand() === zeiger0);
+}
 
 // --- 4a) #81: Mengenfassung der Baustellenstueckliste ist im Dialog waehlbar ---------------
 // Der ECHTE Modul-0-Pfad an einer Wand MIT gespeicherter Mengenuebersteuerung: Exportdialog
@@ -2786,12 +2809,12 @@ globalThis.fetch = echtesFetch;
 
   // Seit #132 hat die Projektebene zusaetzlich die Matrix-Stückliste; das Gebaeude nicht —
   // die Matrix ist eine projektweite Ausgabe.
-  ok('#67/#132 Projektebene bietet Mappe, Gesamtstueckliste, Matrix, Geschosse, Waende, Katalog',
-    JSON.stringify(ARCHIV.exportOptionen('projekt')) === JSON.stringify(['mappe', 'gesamt', 'matrix', 'geschosse', 'waende', 'katalog']));
+  ok('#67/#132 Projektebene bietet Mappe, Gesamtstueckliste, Matrix, Geschosse, Waende, IFC, Katalog',
+    JSON.stringify(ARCHIV.exportOptionen('projekt')) === JSON.stringify(['mappe', 'gesamt', 'matrix', 'geschosse', 'waende', 'ifc', 'katalog']));
   ok('#67/#132 Gebaeudeebene bietet dieselben Dateien OHNE Matrix',
-    JSON.stringify(ARCHIV.exportOptionen('gebaeude')) === JSON.stringify(['mappe', 'gesamt', 'geschosse', 'waende', 'katalog']));
-  ok('#67 Geschossebene bietet Geschossdaten, Gesamtstueckliste, Waende — keine Projektmappe',
-    JSON.stringify(ARCHIV.exportOptionen('geschoss')) === JSON.stringify(['geschoss', 'gesamt', 'waende']));
+    JSON.stringify(ARCHIV.exportOptionen('gebaeude')) === JSON.stringify(['mappe', 'gesamt', 'geschosse', 'waende', 'ifc', 'katalog']));
+  ok('#67 Geschossebene bietet Geschossdaten, Gesamtstueckliste, Waende, IFC — keine Projektmappe',
+    JSON.stringify(ARCHIV.exportOptionen('geschoss')) === JSON.stringify(['geschoss', 'gesamt', 'waende', 'ifc']));
   ok('#67 der Preisschalter steht ausserhalb der Dateiauswahl',
     /id="exp-gesamt-optionen"/.test(html) && /id="exp-preise"/.test(html));
 
@@ -2862,6 +2885,23 @@ globalThis.fetch = echtesFetch;
     !new RegExp(idG1 + ':GS-k').test(gCsv) && !new RegExp(idG2 + ':GS-k').test(gCsv)
     && !/Einbauteil-IDs/.test(gCsv));
   ok('#67 der Geschoss-Export setzt keinen Zeiger um', zeigerJetzt() === zeiger9);
+
+  // Nachtrag zu #67: IFC4 je Wand auf der GESCHOSSEBENE — echter Dialogpfad, beide Waende.
+  zipCalls.length = 0;
+  baumExportCsv('gs-export', gsG);
+  ok('#67-IFC Geschossdialog bietet das IFC-Haekchen, nicht vorausgewaehlt',
+    /<input type="checkbox" value="ifc" aria-label/.test($('exp-opts').innerHTML));
+  $('exp-overlay')._sel = [{ value: 'waende' }, { value: 'ifc' }];
+  $('exp-go').dispatch('click');
+  const iFiles = zipCalls.length ? zipCalls[0].files : [];
+  ok('#67-IFC Geschossebene: je Wand eine IFC4-Datei unter ifc/, neben der Wanddatei',
+    [idG1, idG2].every((id) => {
+      const nm = store.holeElement(id).name;
+      const ifc = iFiles.find((x) => x.name === ARCHIV.ifcPfad({ id, name: nm }));
+      return ifc && /FILE_SCHEMA\(\('IFC4'\)\)/.test(ifc.data)
+        && iFiles.some((x) => x.name === ARCHIV.wandPfad({ id, name: nm }));
+    }) && iFiles.length === 4 && !iFiles.some((x) => /\.ifc$/.test(x.name) && !x.name.startsWith('ifc/')));
+  ok('#67-IFC auch der IFC-Export auf Geschossebene setzt keinen Zeiger um', zeigerJetzt() === zeiger9);
 
   // (a2) #81: Mengenfassung der GESAMTSTÜCKLISTE — der echte Nutzerpfad auf Geschossebene.
   // Genau ein Geschoss, zwei Waende, eine davon mit gespeicherter Uebersteuerung: der

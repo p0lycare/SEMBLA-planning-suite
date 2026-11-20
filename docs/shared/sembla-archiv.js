@@ -53,7 +53,7 @@ import {
 } from "./sembla-projektmappe.js";
 import { katalogObjekt } from "./sembla-katalog.js";
 import { dateiRumpf, gesamtDaten, pfadText, umfang } from "./sembla-gesamtstueckliste.js";
-import { baueDateien, einkaufslisteCsv, gesamtstuecklisteDateien, matrixStuecklisteCsv, matrixStuecklisteXlsx, normDateiformat, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
+import { baueDateien, einkaufslisteCsv, gesamtstuecklisteDateien, ifcText, matrixStuecklisteCsv, matrixStuecklisteXlsx, normDateiformat, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
 
 /** Name der Mappendatei im Archiv — das Erkennungsmerkmal eines Projektarchivs. */
 export const DATEI_MAPPE = "projekt.json";
@@ -1059,14 +1059,28 @@ export function uebernahmeZeilen(u) {
 /** Ordner der Geschossdaten (Teilmappen) im Export-ZIP. */
 export const ORDNER_GESCHOSSE = "geschosse";
 
+/** Ordner der IFC4-Dateien (eine je Wand) im Export-ZIP. */
+export const ORDNER_IFC = "ifc";
+
+/**
+ * Archivpfad der IFC4-Datei einer Wand — Ablage wie die Wanddateien (`<Name>__<id>`),
+ * nur im eigenen Ordner und mit Endung `.ifc`. Der Name bleibt Kosmetik ([L-4]).
+ * @param {{id:string, name?:string}} wand @returns {string}
+ */
+export function ifcPfad(wand) {
+  return `${ORDNER_IFC}/${sicherStamm(wand && wand.name)}__${String(wand && wand.id)}.ifc`;
+}
+
 /** Die je Ebene zulaessigen Auswahloptionen — mehr bietet der Dialog nicht an. */
 export const EXPORT_OPTIONEN = {
   // `matrix` (#132) gibt es nur auf der PROJEKTEBENE: die Matrix-Stückliste ist eine
   // projektweite Ausgabe (Wandzeilen, Geschoss-Zwischensummen, Projekt-Gesamtsumme).
-  projekt: ["mappe", "gesamt", "matrix", "geschosse", "waende", "katalog"],
-  gebaeude: ["mappe", "gesamt", "geschosse", "waende", "katalog"],
-  geschoss: ["geschoss", "gesamt", "waende"],
-  wand: ["wand", "stueckliste"],
+  // `ifc` gibt es auf JEDER Ebene — immer als eine IFC4-Datei JE WAND (Ordner `ifc/`).
+  // Ein Gesamtmodell des Geschosses/Gebaeudes ist bewusst NICHT dabei (offen).
+  projekt: ["mappe", "gesamt", "matrix", "geschosse", "waende", "ifc", "katalog"],
+  gebaeude: ["mappe", "gesamt", "geschosse", "waende", "ifc", "katalog"],
+  geschoss: ["geschoss", "gesamt", "waende", "ifc"],
+  wand: ["wand", "stueckliste", "ifc"],
 };
 
 /** Anzeigename der Ebene im ZIP-Namen (dateisicher, ohne Umlaut). */
@@ -1300,6 +1314,33 @@ export function hierarchieExport(auswahl, p) {
       if (fassung === "angepasst") {
         for (const l of _mengenLuecken(objAbleitung, p.katalog || null, ref ? ref.name : "")) luecken.push(l);
       }
+    }
+  }
+
+  if (gewaehlt.includes("ifc")) {
+    // 3D-Modell (IFC4) JE WAND — wieder im Dialog, nachdem es mit #67 versehentlich
+    // entfallen war. Gebaut wird ausschliesslich ueber den bestehenden Wandpfad
+    // (`ifcText` → `wandelementToIfc`, sembla-ifc.js) — kein zweiter IFC-Pfad und kein
+    // Gesamtmodell des Geschosses. Wie die Stueckliste ist IFC eine AUSGABE: sie liest
+    // das Wandelement des ELEMENTLESERS (frischer Stand, s. o.), nicht den Transport-
+    // stand der Wanddatei. Die OBJ-Steingeometrie aus Modul 6 fliesst NICHT ein — das
+    // tat der zentrale Export auch vor #67 nie. Fehlt ein Wandelement oder ist es nicht
+    // in IFC umsetzbar, wird das BENANNT; die uebrigen Waende entstehen trotzdem.
+    for (const ref of umf.waende) {
+      let el = null;
+      try { el = holeElement(ref.wandId); } catch { el = null; }
+      const w = el && el.wandelement;
+      if (!w) {
+        const ort = ebene === "wand" ? "" : ` (${pfadText({ ...umf.bezug, gebaeude: ref.gebaeude || umf.bezug.gebaeude, geschoss: ref.geschoss || umf.bezug.geschoss, wand: null })})`;
+        luecken.push(`Wandelement „${ref.name}“${ort} fehlt im Wandspeicher — verwaister Eintrag ([L-4]); keine IFC-Datei im ZIP.`);
+        continue;
+      }
+      let text = null;
+      try { text = ifcText(w); } catch (e) {
+        luecken.push(`„${ref.name}“: IFC4 nicht erzeugbar — ${e && e.message ? e.message : e} Keine IFC-Datei im ZIP.`);
+        continue;
+      }
+      dateien.push({ name: ifcPfad({ id: ref.wandId, name: ref.name }), data: text });
     }
   }
 
