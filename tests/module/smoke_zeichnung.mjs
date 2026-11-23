@@ -67,7 +67,11 @@ class El {
   set textContent(v) { this._t = v; this.kinder = []; }
 }
 const _e = {};
+// `title` wie im ausgelieferten <title>: der Druckpfad setzt ihn fuer den PDF-Dateinamen
+// kurz um und stellt ihn danach wieder her (Wunsch 23.11.2026).
+const TITEL_SEITE = "SEMBLA · Technische Zeichnung";
 const document = {
+  title: TITEL_SEITE,
   getElementById: id => _e[id] || (_e[id] = new El("div", id)),
   createElement: tag => new El(tag, "_"),
 };
@@ -78,7 +82,8 @@ globalThis.document = document;
 // Fensterereignisse (nur `resize` wird genutzt: Bildschirmfaktor nachziehen, #61).
 const _fenster = {};
 globalThis.window = {
-  print: () => { globalThis.__printed = true; },
+  // Merkt sich den Titel IM Moment des Drucks — genau den schlaegt der Browser als Dateinamen vor.
+  print: () => { globalThis.__printed = true; globalThis.__printTitel = document.title; },
   addEventListener: (e, f) => { (_fenster[e] || (_fenster[e] = [])).push(f); },
 };
 const fireFenster = e => (_fenster[e] || []).forEach(f => f());
@@ -1231,6 +1236,70 @@ ok("Modul verweist fuer Dateien auf den zentralen Export", /zentralen Export/.te
     /^feste Folge \(/.test($("ovStangen").textContent));
   Z.applyWand(buildWall("IW-Z9-0", 3000, 3000, []));
   ok("[Z-9] Modul 7: ohne Spannstueck keine Aussage zur festen Folge", $("ovStangen").textContent === "–");
+}
+
+// --- Druck: Wandname als PDF-Dateiname (Wunsch 23.11.2026) -----------------------
+// Browser schlagen `document.title` als Dateinamen vor. Waehrend des Drucks steht dort
+// „<Projekt> – <Wand>“, danach wieder der Seitentitel; das Blatt bleibt unveraendert.
+{
+  const T = Z.druckTitel;
+  ok("[PDF-Name] Wand EG-38 mit Projekt: Titel nennt Projekt und Wand",
+    T("Wand_EG-38", "Rettungswache", TITEL_SEITE) === "Rettungswache – Wand_EG-38");
+  ok("[PDF-Name] ohne Projekt nur der Wandname", T("Wand_EG-38", null, TITEL_SEITE) === "Wand_EG-38"
+    && T("Wand_EG-38", "  ", TITEL_SEITE) === "Wand_EG-38");
+  ok("[PDF-Name] unzulaessige Zeichen / \\ : * ? \" < > | und Steuerzeichen werden ersetzt",
+    T('EG/38\\a:b*c?d"e<f>g|h\u0007i\nj', 'Haus A/B', TITEL_SEITE)
+      === "Haus A_B – EG_38_a_b_c_d_e_f_g_h_i_j");
+  ok("[PDF-Name] Raender getrimmt (Leerraum, Punkte), Leerraum gefaltet",
+    T("  Wand   EG-38 . ", " Projekt  X ", TITEL_SEITE) === "Projekt X – Wand EG-38");
+  ok("[PDF-Name] ohne brauchbaren Wandnamen gilt der alte Titel",
+    T("", "P", TITEL_SEITE) === TITEL_SEITE && T(null, "P", TITEL_SEITE) === TITEL_SEITE
+    && T(" / : ", "P", TITEL_SEITE) === TITEL_SEITE);
+
+  // Echter Pfad: Projektwand (Projekt „Rettungswache“), Klick auf „Blatt drucken“.
+  store.setzeAktiv(idW);
+  const blattVor = $("blattwrap").innerHTML;
+  const eingVor = JSON.stringify(store.holeEingaben(idW));
+  document.title = TITEL_SEITE; globalThis.__printed = false; globalThis.__printTitel = null;
+  $("print").dispatch("click");
+  ok("[PDF-Name] beim Druck steht „Projekt – Wandname“ im Titel",
+    globalThis.__printed === true && globalThis.__printTitel === "Rettungswache – " + W.name
+    && /G1-1$/.test(globalThis.__printTitel));
+  ok("[PDF-Name] Titel bleibt bis afterprint gesetzt", document.title === "Rettungswache – " + W.name);
+  fireFenster("afterprint");
+  ok("[PDF-Name] nach afterprint ist der Seitentitel wiederhergestellt", document.title === TITEL_SEITE);
+  ok("[PDF-Name] Blatt und Eingaben bleiben unveraendert",
+    $("blattwrap").innerHTML === blattVor && JSON.stringify(store.holeEingaben(idW)) === eingVor);
+
+  // Sicherheitsnetz: kommt `afterprint` nicht, stellt ein Zeitgeber den Titel zurueck.
+  const echtesST = globalThis.setTimeout;
+  let geplant = null, geplantMs = null;
+  globalThis.setTimeout = (f, ms) => { geplant = f; geplantMs = ms; return 1; };
+  try {
+    $("print").dispatch("click");
+    ok("[PDF-Name] ohne afterprint: Rueckfall-Zeitgeber ist geplant",
+      typeof geplant === "function" && geplantMs === Z.DRUCKTITEL_RUECKFALL_MS
+      && document.title === "Rettungswache – " + W.name);
+    // Zweiter Druck vor der Ruecknahme: der ECHTE Titel bleibt gemerkt, nicht der Drucktitel.
+    $("print").dispatch("click");
+    geplant();
+    ok("[PDF-Name] Zeitgeber stellt den urspruenglichen Titel wieder her (auch nach Doppeldruck)",
+      document.title === TITEL_SEITE);
+    fireFenster("afterprint");
+    ok("[PDF-Name] spaetes afterprint aendert nichts mehr", document.title === TITEL_SEITE);
+  } finally { globalThis.setTimeout = echtesST; }
+
+  // Wand ohne Projektzuordnung: nur der Wandname (kein Projekt erfunden).
+  // Bezeichnung ist der Name des Wandelements — derselbe, den die Seite als aktive Wand nennt.
+  const idFrei = store.speichere("EG-38", buildWall("EG-38", 1500, 1000, []));
+  store.setzeAktiv(idFrei);
+  globalThis.__printTitel = null;
+  $("print").dispatch("click");
+  ok("[PDF-Name] Wand „EG-38“ ohne Projekt: Titel enthaelt EG-38 und kein Projekt",
+    globalThis.__printTitel === "EG-38" && $("wandinfo").textContent.endsWith("EG-38"));
+  fireFenster("afterprint");
+  ok("[PDF-Name] auch hier danach der Seitentitel", document.title === TITEL_SEITE);
+  store.setzeAktiv(idW);
 }
 
 // Entscheid 03.11.2026: jede ueber den echten Pfad eingetragene Testwand traegt im Speicher

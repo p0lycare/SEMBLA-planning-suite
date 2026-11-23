@@ -220,7 +220,8 @@ const AX_TEXTE = {
     + 'entfernt die Angabe, und die Zeile entfällt dort ersatzlos.'],
   'print': ['Blatt drucken',
     'Öffnet den Druckdialog für dieses Blatt. Gedruckt wird genau die gezeigte Vorschau in '
-    + 'echter Papiergröße; Bedienelemente entfallen dabei.'],
+    + 'echter Papiergröße; Bedienelemente entfallen dabei. Beim Speichern als PDF schlägt der '
+    + 'Browser Projekt und Wandnamen als Dateinamen vor.'],
 };
 /**
  * Die Häkchen bekommen ihren Namen von ihrer SICHTBAREN Beschriftung; ein zweiter Name am
@@ -594,6 +595,61 @@ function setupStoreSync(){
   });
 }
 
+/* ---- Druck: Dateiname des PDFs (Wunsch 23.11.2026) ------------------------------
+   Browser schlagen beim „Als PDF speichern“ `document.title` als Dateinamen vor. Damit
+   nicht jede Wand „SEMBLA · Technische Zeichnung“ heißt, steht für die Dauer des Drucks
+   der Wandname (bei einer Projektwand mit dem Projektnamen davor) im Titel; danach gilt
+   wieder der alte. Reine Benennung — Blatt, Speicher und Eingaben bleiben unberührt. */
+/** Für Dateinamen unzulässige Zeichen (Windows/macOS/Linux) und Steuerzeichen. */
+const TITEL_UNZULAESSIG = /[\/\\:*?"<>|\u0000-\u001f\u007f]+/g;
+/** Ein Namensteil dateisicher: Unzulässiges → „_“, Leerraum gefaltet, Ränder (inkl. Punkte) getrimmt. */
+function titelTeil(s){
+  return String(s==null?'':s).replace(TITEL_UNZULAESSIG,'_').replace(/\s+/g,' ')
+    .replace(/^[\s.]+|[\s.]+$/g,'');
+}
+/**
+ * Vorgeschlagener Druck-/PDF-Titel aus Wand- und Projektname (rein, DOM-frei).
+ * „<Projekt> – <Wand>“, ohne Projekt nur „<Wand>“; ohne brauchbaren Wandnamen `fallback`.
+ * @param {any} wandName @param {any} projektName @param {string} fallback @returns {string}
+ */
+function druckTitel(wandName, projektName, fallback){
+  // Ein Teil, der nur aus Ersatzzeichen bestünde, trägt keine Bezeichnung mehr.
+  const brauchbar=t=>/[^_\s]/.test(t)?t:'';
+  const wand=brauchbar(titelTeil(wandName));
+  if(!wand) return fallback;
+  const prj=brauchbar(titelTeil(projektName));
+  return prj ? prj+' – '+wand : wand;
+}
+/** Projektname der aktiven Wand ([L-11]: nur, wenn sie einem Projekt zugeordnet ist). */
+function druckProjekt(){
+  try{
+    const id=store&&store.aktivId?store.aktivId():null;
+    return (id&&store.wirksameKopfdaten) ? store.wirksameKopfdaten(id).projekt : null;
+  }catch(e){ return null; }
+}
+/** Sicherheitsnetz, falls `afterprint` ausbleibt (ms nach Rückkehr von window.print()). */
+const DRUCKTITEL_RUECKFALL_MS = 2000;
+let _titelVorDruck=null, _titelTimer=null;
+/** Ursprünglichen Titel wiederherstellen (mehrfach aufrufbar, wirkt nur einmal). */
+function titelZurueck(){
+  if(_titelTimer!==null){ clearTimeout(_titelTimer); _titelTimer=null; }
+  if(_titelVorDruck===null) return;
+  document.title=_titelVorDruck; _titelVorDruck=null;
+}
+function drucken(){
+  if(!WALL){ alert('Kein aktives Wandelement — in „Start“ anlegen oder wählen.'); return; }
+  // Der zuletzt ECHTE Titel bleibt gemerkt, auch wenn erneut gedruckt wird, bevor er zurück ist.
+  if(_titelVorDruck===null) _titelVorDruck=document.title;
+  document.title=druckTitel(WALL.name, druckProjekt(), _titelVorDruck);
+  try{ window.print(); }
+  finally{
+    if(_titelVorDruck!==null){
+      if(_titelTimer!==null) clearTimeout(_titelTimer);
+      _titelTimer=setTimeout(titelZurueck, DRUCKTITEL_RUECKFALL_MS);
+    }
+  }
+}
+
 function bindEvents(){
   $('fmt').addEventListener('change',optionGeaendert);
   $('masse').addEventListener('change',optionGeaendert);
@@ -604,12 +660,15 @@ function bindEvents(){
     const id=KD_FELDER[key];
     $(id).addEventListener('change',()=>kopfdatenGeaendert(id));
   }
-  $('print').addEventListener('click',()=>{ if(!WALL){ alert('Kein aktives Wandelement — in „Start“ anlegen oder wählen.'); return; } window.print(); });
+  $('print').addEventListener('click',drucken);
   // Fenstergroesse geaendert: nur den Bildschirmfaktor nachziehen, nicht neu zeichnen.
   if(window.addEventListener) window.addEventListener('resize',setzeVorschauMassstab);
+  // Nach dem Druckdialog den ursprünglichen Seitentitel zurück (s. drucken()).
+  if(window.addEventListener) window.addEventListener('afterprint',titelZurueck);
 }
 
 window.__z={applyWand,render,optionGeaendert,optionenAusUi,setzeVorschauMassstab,aktuellerStand,
+  druckTitel,titelZurueck,DRUCKTITEL_RUECKFALL_MS,
   get wall(){return WALL;}, get opt(){return OPT;}, get masstab(){return MASSSTAB;},
   get blattgeometrie(){return GEO;}};
 

@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261123-01",
+    datum: "2026-11-23",
+    typ: "feature",
+    issue: 15,
+    titel: "Modul 7: „Blatt drucken“ schlägt beim Speichern als PDF Projekt und Wandnamen als Dateinamen vor",
+    testbitte: "Modul 7 mit einer Projektwand öffnen, „Blatt drucken“ → „Als PDF speichern“: vorgeschlagen wird "
+      + "„<Projekt> – Wand_EG-…“; nach dem Dialog heißt der Browser-Tab wieder „SEMBLA · Technische Zeichnung“",
+  },
+  {
     id: "chg-20261120-01",
     datum: "2026-11-20",
     typ: "fix",
