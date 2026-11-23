@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261123-02",
+    datum: "2026-11-23",
+    typ: "fix",
+    issue: 1,
+    titel: "Modul 1: gezeichnete Durchbrüche behalten nach Verlassen und Wiederöffnen der Wand ihre Lage und bleiben bearbeitbar",
+    testbitte: "Modul 1: Durchbruch in die oberste Lage zeichnen, in den Geschossplan wechseln und zurück: Durchbruch liegt "
+      + "unverändert oben, lässt sich anklicken und mit „Durchbrüche leeren“ entfernen",
+  },
+  {
     id: "chg-20261123-01",
     datum: "2026-11-23",
     typ: "feature",

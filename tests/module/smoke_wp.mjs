@@ -5046,6 +5046,69 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   store.setzeAktiv(idA); globalThis.window.__wpInit();
 }
 
+// Bugmeldung 23.11.2026: Durchbrüche in der obersten Lage → Geschossplan → zurück zur Wand lagen
+// danach in Lage 1, waren nicht mehr bearbeitbar, und „Durchbrüche leeren“ wirkte nicht. Ursache:
+// beim Laden wanderten gespeicherte `durchbruch`-Öffnungen in die Tür-/Fensterliste (ohne Lage)
+// statt zurück in die Zellen `voids`. Geprüft wird über die ECHTE Speicherschicht und einen
+// frischen Seitenaufruf (`__wpInit`), genau der Weg „Wand verlassen und wieder öffnen“.
+{
+  const DCL=()=>document.getElementById('durchClear').dispatch('click');
+  const gesp=id=>store.holeElement(id).wandelement;
+  const db=w=>(w.openings||[]).filter(o=>o.art==='durchbruch').map(o=>[o.g0,o.g1,o.l0,o.l1].join(','));
+  const nurTF=w=>JSON.stringify((w.openings||[]).filter(o=>o.art!=='durchbruch'));
+  const oeffne=id=>{ WP.voids.clear(); store.setzeAktiv(id); globalThis.window.__wpInit(); };
+
+  // (a) Durchbruch in der obersten Lage, Spalten 3–4.
+  const idDB=store.speichere('Wand DB', Object.assign(buildWall('Wand DB',2000,2600,[]),{wandtyp:'ohne_wind'}));
+  oeffne(idDB);
+  const TOP=WP.RESULT.wandelement.lagen-1;
+  WP.toggleVoid(TOP,3); WP.toggleVoid(TOP,4);
+  const soll=`3,5,${TOP},${TOP+1}`;
+  ok('[DB-Lage] Durchbruch oberste Lage gespeichert', db(gesp(idDB)).join('|')===soll);
+  const vorher=JSON.stringify(gesp(idDB));
+  oeffne(idDB);                                                  // Wand verlassen und wieder öffnen
+  ok('[DB-Lage] bloßes Laden schreibt nichts zurück', JSON.stringify(gesp(idDB))===vorher);
+  ok('[DB-Lage] Zellen wiederhergestellt (gleiche Lage und Spalten)',
+    WP.voids.size===2 && WP.voids.has(`${TOP},3`) && WP.voids.has(`${TOP},4`));
+  ok('[DB-Lage] Tür-/Fensterliste zeigt den Durchbruch nicht',
+    /Keine Öffnungen/.test(document.getElementById('ops').innerHTML));
+  WP.run();                                                      // nächste Bedienung speichert
+  ok('[DB-Lage] nach erneutem Speichern bleibt er in der obersten Lage', db(gesp(idDB)).join('|')===soll);
+  WP.toggleVoid(TOP,4);                                          // weiter bearbeitbar
+  ok('[DB-Lage] Zelle bleibt bearbeitbar', db(gesp(idDB)).join('|')===`3,4,${TOP},${TOP+1}`);
+  DCL();
+  ok('[DB-Lage] „Durchbrüche leeren“ entfernt ihn', db(gesp(idDB)).length===0 && WP.voids.size===0);
+
+  // (b) Bereits verrutscht gespeicherte Wand (Durchbruch mit l0=0): erscheint als Zellen unten,
+  // nichts wird erfunden, und Leeren entfernt ihn.
+  const idV=store.speichere('Wand DBv', Object.assign(
+    buildWall('Wand DBv',2000,2600,[new Opening(3,5,0,1,'durchbruch')]),{wandtyp:'ohne_wind'}));
+  oeffne(idV);
+  ok('[DB-Lage] verrutschter Altstand: Zellen unten, keine Tür',
+    WP.voids.size===2 && WP.voids.has('0,3') && WP.voids.has('0,4')
+    && /Keine Öffnungen/.test(document.getElementById('ops').innerHTML));
+  DCL();
+  ok('[DB-Lage] verrutschter Altstand: Leeren entfernt ihn', db(gesp(idV)).length===0);
+
+  // (c) Tür und Fenster reisen bit-gleich mit, der Durchbruch daneben behält seine Lage.
+  const ops=[new Opening(1,7,0,10,'tuer'), new Opening(9,13,4,10,'fenster'), new Opening(14,15,12,13,'durchbruch')];
+  const idTF=store.speichere('Wand DBtf', Object.assign(buildWall('Wand DBtf',2000,2600,ops),{wandtyp:'ohne_wind'}));
+  const tfVorher=nurTF(gesp(idTF));
+  // Das Double leert per innerHTML keine angehängten Zeilen; mehrfaches Rendern wiederholt sie.
+  const OPS=document.getElementById('ops'); OPS._kinder=[];
+  oeffne(idTF);
+  const zeilen=OPS._kinder.map(k=>k.innerHTML).join('\n');
+  WP.run();
+  ok('[DB-Lage] Tür/Fenster-Rundreise unverändert', nurTF(gesp(idTF))===tfVorher);
+  ok('[DB-Lage] Durchbruch neben Tür/Fenster behält Lage', db(gesp(idTF)).join('|')==='14,15,12,13');
+  ok('[DB-Lage] Liste zeigt nur Tür und Fenster',
+    [...new Set(zeilen.match(/<b>[^<]*<\/b>/g)||[])].join()==='<b>Tür 1</b>,<b>Fenster 2</b>');
+  DCL();
+  ok('[DB-Lage] Leeren lässt Tür/Fenster stehen', db(gesp(idTF)).length===0 && nurTF(gesp(idTF))===tfVorher);
+
+  oeffne(idA);
+}
+
 // Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.
 const anzahlVorher=store.listeElemente().length;
 store.setzeAktiv(null);

@@ -1721,7 +1721,16 @@ function applyWand(w){
   // #136 Die Höhe steht in MILLIMETERN im Feld — unverändert, ohne Rundung.
   $('len').value=(w.length_mm/1000).toFixed(3); $('hgt').value=String(w.height_mm);
   if(w.sides){ $('sideVorne').value=(w.sides.vorne&&w.sides.vorne.funktion)||'fassade'; $('sideHinten').value=(w.sides.hinten&&w.sides.hinten.funktion)||'innenausbau'; }
-  openings=(w.openings||[]).map(o=>({art:o.art||'tuer',x:o.g0*125/1000,w:(o.g1-o.g0)*125/1000,sill:(o.art==='fenster')?o.l0*200/1000:0,h:(o.l1-o.l0)*200/1000}));
+  // Gezeichnete Durchbrüche leben im Editor als Zellen (`voids`), nicht in der Tür-/Fensterliste.
+  // Sie gehen deshalb hierher zurück — mit Lage UND Spalte (g0..g1-1 × l0..l1-1). Früher landeten
+  // sie in `openings`, verloren dort ihre Lage (nur Fenster tragen eine Brüstung) und rutschten
+  // beim nächsten Speichern in Lage 1; „Durchbrüche leeren“ erreichte sie dann nicht mehr.
+  // Türen/Fenster werden unverändert übernommen; die Zellen ersetzen die der vorigen Wand.
+  voids=new Set();
+  const alleOps=w.openings||[];
+  for(const o of alleOps){ if(o.art!=='durchbruch') continue;
+    for(let l=o.l0;l<o.l1;l++) for(let g=o.g0;g<o.g1;g++) voids.add(l+','+g); }
+  openings=alleOps.filter(o=>o.art!=='durchbruch').map(o=>({art:o.art||'tuer',x:o.g0*125/1000,w:(o.g1-o.g0)*125/1000,sill:(o.art==='fenster')?o.l0*200/1000:0,h:(o.l1-o.l0)*200/1000}));
   stepsArr=(w.steps||[]).map(s=>({x0:s.x0_mm/1000, x1:s.x1_mm/1000, h:s.height_mm/1000}));
   interlocksArr=(w.interlocks||[]).map(il=>({g0:il.g0, breite:il.g1-il.g0, start_parity:il.start_parity||0}));
   if(w.prestress && w.prestress.force_kN){ $('modus').value='nachweis'; $('spacing').value=String(w.prestress.max_span_grid||3); $('force').value=w.prestress.force_kN; }
