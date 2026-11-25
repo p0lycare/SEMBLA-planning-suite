@@ -8,7 +8,8 @@ import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { topLagen, oberkantenAbschnitte, lagenKantenVonWand, lagenOberkanteMm }
   from "../../docs/shared/sembla-montage.js";
-import { wandelementToIfc } from "../../docs/shared/sembla-ifc.js";
+import { wandelementToIfc, objStein, objAchsenAuto, objTiefenAchse, normObjAchsen, parseObj, OBJ_TOLERANZ_MM }
+  from "../../docs/shared/sembla-ifc.js";
 import { createHash } from "node:crypto";
 import { semblaBom } from "../../docs/shared/sembla-bom.js";
 
@@ -59,14 +60,18 @@ const W  = buildWall('IW-01', 3000, 2600, [new Opening(4,8,0,10,'tuer')], {vorne
 const WF = buildWall('Fensterwand', 5000, 2600, [new Opening(6,12,3,9,'fenster')]);
 
 // Storage-Mock inkl. OBJ-Schicht (setzeObj/holeObj/loescheObj)
-let _subs=[]; let _aktiv='w-1'; let _we=W; const _obj={i2:null,i3:null};
+let _subs=[]; let _aktiv='w-1'; let _we=W; const _obj={i2:null,i3:null}; const _achsen={i2:null,i3:null};
+// wie storage.js: die Achsen-Zuordnung wird MIT der OBJ gespeichert; ohne Angabe entfaellt sie.
 const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we,
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; },
-  holeObj:(t)=>_obj[t], setzeObj:(t,v)=>{_obj[t]=v;}, loescheObj:(t)=>{_obj[t]=null;} };
+  holeObj:(t)=>_obj[t], setzeObj:(t,v,a)=>{_obj[t]=v;_achsen[t]=a?JSON.parse(JSON.stringify(a)):null;},
+  loescheObj:(t)=>{_obj[t]=null;_achsen[t]=null;},
+  holeObjAchsen:(t)=>_achsen[t], setzeObjAchsen:(t,a)=>{_achsen[t]=a?JSON.parse(JSON.stringify(a)):null;} };
 const fireStore=()=>_subs.forEach(cb=>cb());
 
 globalThis.window.SEMBLA={ buildWall, Opening, store:storeMock, topLagen, oberkantenAbschnitte,
-  lagenKanten: lagenKantenVonWand, lagenOberkanteMm };
+  lagenKanten: lagenKantenVonWand, lagenOberkanteMm,
+  objStein, objAchsenAuto, objTiefenAchse, normObjAchsen, parseObj, OBJ_TOLERANZ_MM };
 
 eval(script);
 globalThis.window.__ifcInit();
@@ -92,8 +97,9 @@ ok('ungültiges Wandelement wirft Fehler', threw);
 // OBJ-Loader über storage.js: OBJ-Texte einspeisen, echte Geometrie bauen.
 // Die realen Bauteil-Modelle (Bauteil-OBJ/) sind vertraulich, gitignored und NICHT im Repo — der
 // Test darf sie nicht benötigen. Stattdessen eine minimale synthetische Quader-Geometrie je Steintyp:
-// OBJ-Koords x=Länge, y=Tiefe (125 mm), z=Höhe (200 mm). Der Parser tauscht Y/Z ->
-// Szene-Koords x=Länge, y=Höhe (0,200 m), z=Tiefe (0,125 m). So bleiben Parser, Dreiecksgeometrie,
+// OBJ-Koords x=Länge, y=Tiefe (125 mm), z=Höhe (200 mm) — die kanonische Lage; die Aufbereitung
+// (objStein, sembla-ifc.js) lässt sie unverändert, die Szene bekommt
+// x=Länge, y=Höhe (0,200 m), z=Tiefe (0,125 m). So bleiben Parser, Dreiecksgeometrie,
 // erwartete i3-Abmessungen, stoneGeom/Caching und der Real-Geometrie-Build sinnvoll geprüft.
 function boxObj(laenge_mm){
   const x=laenge_mm, y=125, z=200;   // objY -> Szene-Tiefe, objZ -> Szene-Höhe
@@ -105,7 +111,7 @@ const objI3=boxObj(375);   // i3 = 37,5 cm
 const objI2=boxObj(250);   // i2 = 25 cm
 A.OBJTEXT.i2=objI2; A.OBJTEXT.i3=objI3;
 
-const d3=A.parseObjScene(objI3);
+const d3=A.parseObjScene(objI3,'i3');
 ok('OBJ-Parser: Positionen > 0', d3.pos.length>0);
 ok('OBJ-Parser: Dreiecke (Länge teilbar durch 9)', d3.pos.length%9===0);
 let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9,mnz=1e9,mxz=-1e9;
@@ -122,6 +128,116 @@ ok('stoneGeom cached (gleiche Instanz)', A.stoneGeom('i3')===g3);
 // Build mit echter Geometrie löst keinen Fehler aus
 let realOk=true; try{ A.opt.real=true; A.build(W); }catch(e){ realOk=false; globalThis.__re=e.message; } finally { A.opt.real=false; A.build(W); }
 ok('Build mit echter Geometrie läuft', realOk);
+
+// --- Achsen-Zuordnung der hochgeladenen OBJ-Datei (Meldung „fehlerhafte Darstellung") --------
+// Eine Y-oben-Datei (Rhino/Blender) lag frueher flach in der Wand: 125 hoch, 200 tief, Ursprung
+// versetzt. Geprueft wird der echte Bedienweg der Seite — Upload (objSet), Automatik, Speicherung
+// zusammen mit der OBJ, Altbestand ohne Zuordnung, Dialog mit Probe/Uebernehmen/Abbrechen.
+{
+  const szeneBox=(pos)=>{ const mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];
+    for(let i=0;i<pos.length;i++){ const k=i%3; if(pos[i]<mn[k])mn[k]=pos[i]; if(pos[i]>mx[k])mx[k]=pos[i]; } return {mn,mx}; };
+  const aufrecht=(typ,l)=>{ const g=A.stoneGeom(typ); if(!g) return false; const b=szeneBox(g.attributes.position.array);
+    return b.mn.every(c=>near(c,0)) && near(b.mx[0],l/1000) && near(b.mx[1],0.200) && near(b.mx[2],0.125); };
+  // Y-oben: (x, y, z) -> (x, z, -y), dazu ein Versatz des Ursprungs
+  const yOben=(txt)=>txt.split('\n').map(z=>{ if(!z.startsWith('v ')) return z; const p=z.split(' ').map(Number); return 'v '+(p[1]-3)+' '+(p[3]+7)+' '+(-p[2]+40); }).join('\n');
+  const info=id=>$(id).innerHTML;
+
+  // (a) Upload der kanonischen Dateien: ohne Eingriff sofort richtig, kein Dialog
+  ok('Achsen: Upload i3 (kanonisch) wird angenommen', A.objSet('i3',objI3)===true && A.objSet('i2',objI2)===true);
+  ok('Achsen: kanonische Datei -> Zuordnung +X/+Y/+Z mm, MIT der OBJ gespeichert',
+    _obj.i3===objI3 && JSON.stringify(_achsen.i3)===JSON.stringify({laenge:'+x',tiefe:'+y',hoehe:'+z',einheit:'mm'}));
+  ok('Achsen: kanonische Datei -> kein Dialog', $('objDlg').hidden!==false);
+  ok('Achsen: kanonische Datei -> Stein steht in Nennlage', aufrecht('i3',375) && aufrecht('i2',250));
+  ok('Achsen: Anzeige nennt erkannte Maße und „passt"', /375 × 125 × 200 mm/.test(info('objInfoI3')) && /passt/.test(info('objInfoI3')));
+  ok('Achsen: Upload schaltet die echte Steingeometrie ein', A.opt.real===true && $('cReal').checked===true);
+
+  // (b) Y-oben-Datei mit versetztem Ursprung: Automatik stellt sie aufrecht in die Wand
+  ok('Achsen: Upload Y-oben wird angenommen', A.objSet('i3',yOben(objI3))===true);
+  ok('Achsen: Y-oben -> Hochachse +Y, Tiefe −Z erkannt und gespeichert',
+    _achsen.i3 && _achsen.i3.hoehe==='+y' && _achsen.i3.laenge==='+x' && _achsen.i3.tiefe==='-z');
+  ok('Achsen: Y-oben -> Stein steht aufrecht (0,200 m hoch, 0,125 m tief), Ursprung in der Ecke', aufrecht('i3',375));
+  ok('Achsen: Y-oben -> kein Dialog nötig', $('objDlg').hidden!==false);
+  {
+    // Gegenprobe gegen das alte Verhalten (feste Annahme X/Y/Z): 0,125 m hoch, 0,200 m tief
+    const alt=szeneBox(A.parseObjScene(yOben(objI3),'i3',{laenge:'+x',tiefe:'+y',hoehe:'+z',einheit:'mm'}).pos);
+    ok('Achsen: Gegenprobe — mit fester Annahme läge der Stein flach (0,125 hoch / 0,200 tief)',
+      near(alt.mx[1]-alt.mn[1],0.125) && near(alt.mx[2]-alt.mn[2],0.200));
+  }
+  // Der Mesh sitzt mit seiner Ecke am Steinanfang: Position (x0, Lagenunterkante, 0)
+  A.build(W);
+  {
+    const echte=A.gruppe.children.filter(o=>o.__kind==='mesh'&&o.geometry&&o.geometry.attributes);
+    const erwartet=W.courses.reduce((n,c)=>n+c.stones.length,0);
+    ok('Achsen: jeder Stein der Wand nutzt die echte Geometrie, Tiefe beginnt bei 0',
+      echte.length===erwartet && echte.every(m=>m.position.z===0));
+  }
+
+  // (c) Altbestand: OBJ ohne gespeicherte Zuordnung -> Automatik beim Lesen, nichts wird geschrieben
+  _obj.i3=yOben(objI3); _achsen.i3=null; A.OBJACHSEN.i3={laenge:'+x',tiefe:'+y',hoehe:'+z',einheit:'mm'};
+  A.objRestore();
+  ok('Achsen: Altbestand ohne Zuordnung -> Automatik (aufrecht), Speicher bleibt unberührt',
+    A.OBJACHSEN.i3===null && aufrecht('i3',375) && _achsen.i3===null && /Automatik/.test(info('objInfoI3')));
+  _achsen.i3={laenge:'+q',hoehe:'+z'}; A.objRestore();
+  ok('Achsen: ungültige gespeicherte Zuordnung -> Automatik statt Fehlbild', A.OBJACHSEN.i3===null && aufrecht('i3',375));
+
+  // (d) Dialog: öffnen, Probe wirkt sofort, Abbrechen stellt wieder her, Übernehmen speichert
+  _achsen.i3=null; A.objSet('i3',objI3);
+  $('objAxI3').dispatch('click');
+  ok('Achsen-Dialog: öffnet mit der geltenden Zuordnung', $('objDlg').hidden===false
+    && $('objAxL').value==='+x' && $('objAxH').value==='+z' && $('objAxT').value==='+y' && $('objAxU').value==='mm');
+  ok('Achsen-Dialog: Tabelle zeigt erkannt/Nennmaß je Länge, Tiefe, Höhe',
+    /Länge/.test(info('objDlgTab')) && /375 mm/.test(info('objDlgTab')) && (info('objDlgTab').match(/✓/g)||[]).length===3);
+  $('objAxH').value='+y'; $('objAxH').dispatch('change');
+  ok('Achsen-Dialog: Hochachse geändert -> Tiefe rechtshändig neu vorgeschlagen (−Z)', $('objAxT').value==='-z');
+  ok('Achsen-Dialog: falsche Wahl wird benannt (✗ + Hinweis), Probe wirkt sofort auf die Vorschau',
+    /✗/.test(info('objDlgTab')) && /weichen vom Nennmaß/.test($('objDlgMsg').textContent) && !aufrecht('i3',375));
+  ok('Achsen-Dialog: die Probe ist noch NICHT gespeichert', _achsen.i3.hoehe==='+z');
+  $('objAxL').value='+y'; $('objAxL').dispatch('change');
+  ok('Achsen-Dialog: Längs- = Hochachse wird abgewiesen, Übernehmen gesperrt',
+    /verschiedene Achsen/.test($('objDlgMsg').textContent) && $('objDlgOk').disabled===true);
+  $('objDlgOk').dispatch('click');
+  ok('Achsen-Dialog: gesperrtes Übernehmen schreibt nichts und bleibt offen', _achsen.i3.hoehe==='+z' && $('objDlg').hidden===false);
+  $('objDlgCancel').dispatch('click');
+  ok('Achsen-Dialog: Abbrechen stellt die vorige Zuordnung wieder her',
+    $('objDlg').hidden===true && A.OBJACHSEN.i3.hoehe==='+z' && aufrecht('i3',375) && _achsen.i3.hoehe==='+z');
+
+  $('objAxI3').dispatch('click');
+  $('objAxH').value='-z'; $('objAxH').dispatch('change');
+  ok('Achsen-Dialog: Hochachse −Z (Stein auf dem Kopf) passt in den Maßen', (info('objDlgTab').match(/✓/g)||[]).length===3 && $('objAxT').value==='-y');
+  $('objAxT').value='+y'; $('objAxT').dispatch('change');
+  $('objDlgOk').dispatch('click');
+  ok('Achsen-Dialog: Übernehmen speichert die Wahl zur OBJ (samt gespiegelter Tiefe)',
+    $('objDlg').hidden===true && JSON.stringify(_achsen.i3)===JSON.stringify({laenge:'+x',tiefe:'+y',hoehe:'-z',einheit:'mm'})
+    && JSON.stringify(A.OBJACHSEN.i3)===JSON.stringify(_achsen.i3) && _obj.i3===objI3);
+  A.objRestore();
+  ok('Achsen: gespeicherte Wahl gilt nach dem Neuladen weiter', A.OBJACHSEN.i3.hoehe==='-z' && aufrecht('i3',375));
+  $('objAxI3').dispatch('click'); $('objDlgAuto').dispatch('click');
+  ok('Achsen-Dialog: „Automatik" setzt die Auswahl auf die erkannte Lage zurück', $('objAxH').value==='+z' && $('objAxT').value==='+y');
+  $('objDlg').dispatch('keydown',{key:'Escape'});
+  ok('Achsen-Dialog: Escape bricht ab', $('objDlg').hidden===true && A.OBJACHSEN.i3.hoehe==='-z');
+
+  // (e) Datei, die zu keinem Nennmaß passt: nichts wird geraten — Dialog geht auf und sagt es
+  ok('Achsen: unpassende Datei wird geladen, aber der Dialog öffnet sich mit Warnung',
+    A.objSet('i3',boxObj(300))===true && $('objDlg').hidden===false && /weichen vom Nennmaß/.test($('objDlgMsg').textContent)
+    && /weicht vom Nennmaß ab/.test(info('objInfoI3')));
+  $('objDlgCancel').dispatch('click');
+  // (f) Datei ohne Geometrie: nicht übernommen, vorhandene Datei bleibt
+  { const vor=_obj.i3;
+    ok('Achsen: Datei ohne Geometrie wird benannt abgewiesen, Bestand bleibt',
+      A.objSet('i3','# keine Geometrie\n')===false && _obj.i3===vor && /keine OBJ-Geometrie/.test($('objStatus').textContent)); }
+  // (g) Neuer Upload ersetzt eine alte Zuordnung (sie galt der alten Datei)
+  _achsen.i2={laenge:'+y',tiefe:'-x',hoehe:'+z',einheit:'cm'}; A.objSet('i2',objI2);
+  ok('Achsen: neuer Upload ersetzt die alte Zuordnung durch die Automatik der neuen Datei',
+    JSON.stringify(_achsen.i2)===JSON.stringify({laenge:'+x',tiefe:'+y',hoehe:'+z',einheit:'mm'}));
+  // (h) „Geometrie entfernen" räumt Datei UND Zuordnung
+  $('objClear').dispatch('click');
+  ok('Achsen: „Geometrie entfernen" löscht Datei und Zuordnung, Knopf „Achsen…" gesperrt',
+    _obj.i2===null && _obj.i3===null && _achsen.i2===null && _achsen.i3===null && A.OBJACHSEN.i3===null
+    && $('objAxI3').disabled===true && A.stoneGeom('i3')===null);
+
+  // Ausgangszustand für die folgenden Prüfungen wiederherstellen
+  A.OBJTEXT.i2=objI2; A.OBJTEXT.i3=objI3; A.opt.real=false; $('cReal').checked=false; A.build(W);
+}
 
 // Storage-Sync: externer Wechsel auf neues aktives Element -> Ansicht folgt (ohne Datei)
 _aktiv='w-2'; _we=WF; fireStore();

@@ -28,6 +28,27 @@
   .stagemsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
             padding:24px;color:var(--sb-muted);font-size:13px;line-height:1.6}
   input[type=file]{font-size:12px;max-width:150px}
+  .objrow{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  button.mini{width:auto;padding:5px 9px;font-size:12px;white-space:nowrap}
+  button:disabled{opacity:.5;cursor:default}
+  .objinfo{font-size:11.5px;color:var(--sb-muted);margin:0 0 8px 2px;line-height:1.45}
+  .objinfo .ok{color:var(--sb-ok);font-weight:600} .objinfo .no{color:#c9461c;font-weight:600}
+  /* Achsen-Dialog: schwebt UEBER der 3D-Ansicht, verdeckt sie aber nicht — jede Wahl ist sofort am Modell zu sehen. */
+  .axdlg{position:absolute;left:14px;top:12px;width:330px;max-width:calc(100% - 28px);background:#fff;
+         border:1px solid var(--sb-line);border-radius:10px;box-shadow:0 6px 24px rgba(19,32,46,.18);padding:14px 16px;font-size:12.5px;z-index:5}
+  .axdlg[hidden]{display:none}
+  .axdlg h3{font-size:13.5px;margin:0 0 6px}
+  .axdlg p{margin:0 0 9px;color:var(--sb-muted);line-height:1.45;font-size:11.5px}
+  .axgrid{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center}
+  .axgrid select{font-size:12.5px;padding:4px 6px;border:1px solid var(--sb-line);border-radius:6px;background:#fff;min-width:118px}
+  .axtab{width:100%;border-collapse:collapse;margin:11px 0 4px;font-variant-numeric:tabular-nums}
+  .axtab th,.axtab td{text-align:right;padding:3px 4px;border-bottom:1px solid var(--sb-line);font-size:12px}
+  .axtab th:first-child,.axtab td:first-child{text-align:left}
+  .axtab th{color:var(--sb-muted);font-weight:600}
+  .axtab .ok{color:var(--sb-ok);font-weight:700} .axtab .no{color:#c9461c;font-weight:700}
+  .axmsg{min-height:16px;margin:6px 0 2px;line-height:1.45;font-size:11.5px;color:var(--sb-muted)}
+  .axmsg.no{color:#c9461c;font-weight:600}
+  .axbtn{display:flex;gap:6px;margin-top:9px} .axbtn button{padding:7px 8px;font-size:12.5px}
 </style>
 </head>
 <body>
@@ -51,19 +72,46 @@
     <div class="row"><button id="reset">Ansicht zurücksetzen</button></div>
 
     <h2>Bauteil-Geometrie (OBJ)</h2>
-    <label class="chk">i2 <input type="file" id="objI2" accept=".obj"></label>
-    <label class="chk">i3 <input type="file" id="objI3" accept=".obj"></label>
+    <div class="objrow"><label class="chk">i2 <input type="file" id="objI2" accept=".obj"></label>
+      <button class="mini" id="objAxI2" title="Achsen-Zuordnung der i2-Datei ansehen und korrigieren">Achsen…</button></div>
+    <div class="objinfo" id="objInfoI2"></div>
+    <div class="objrow"><label class="chk">i3 <input type="file" id="objI3" accept=".obj"></label>
+      <button class="mini" id="objAxI3" title="Achsen-Zuordnung der i3-Datei ansehen und korrigieren">Achsen…</button></div>
+    <div class="objinfo" id="objInfoI3"></div>
     <div class="row"><button id="objClear">Geometrie entfernen</button></div>
     <div class="hint" id="objStatus"></div>
     <div class="hint">Echte Steingeometrie ist nicht im Werkzeug enthalten. Lade <b>i2_SEMBLA.obj</b> und
       <b>i3_SEMBLA.obj</b> einmalig — sie bleiben nur lokal in diesem Browser (localStorage) und wirken
-      nur auf diese 3D-Vorschau. Die IFC4-Datei der Wand entsteht im Export von „Start" (Modul&nbsp;0,
+      nur auf diese 3D-Vorschau. Achslage, Einheit und Nullpunkt der Datei werden beim Laden
+      <b>automatisch</b> am Nennmaß des Steins erkannt (auch Y-oben-Dateien, z.&nbsp;B. aus Rhino) und lassen
+      sich über <b>„Achsen…"</b> nachkorrigieren. Die IFC4-Datei der Wand entsteht im Export von „Start" (Modul&nbsp;0,
       Häkchen „3D-Modell (IFC4 je Wand)") — dort mit vereinfachter Quadergeometrie, ohne die OBJ-Dateien.</div>
   </div>
 
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="stagemsg" id="stagemsg" style="display:none"></div>
+    <!-- Achsen-Zuordnung der hochgeladenen OBJ-Datei (je Steintyp). Liegt NEBEN dem Canvas im
+         Markup und nur optisch darueber; jede Wahl wirkt sofort auf die Vorschau, gespeichert
+         wird erst mit „Übernehmen". -->
+    <div class="axdlg" id="objDlg" role="dialog" aria-labelledby="objDlgTitel" hidden>
+      <h3 id="objDlgTitel">Achsen-Zuordnung</h3>
+      <p id="objDlgText"></p>
+      <div class="axgrid">
+        <label for="objAxL">Längsachse (Wandrichtung)</label>
+        <select id="objAxL"><option value="+x">+X</option><option value="-x">−X</option><option value="+y">+Y</option><option value="-y">−Y</option><option value="+z">+Z</option><option value="-z">−Z</option></select>
+        <label for="objAxH">Hochachse (nach oben)</label>
+        <select id="objAxH"><option value="+x">+X</option><option value="-x">−X</option><option value="+y">+Y</option><option value="-y">−Y</option><option value="+z">+Z</option><option value="-z">−Z</option></select>
+        <label for="objAxT">Tiefe (von vorn nach hinten)</label>
+        <select id="objAxT"></select>
+        <label for="objAxU">Einheit der Datei</label>
+        <select id="objAxU"><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option></select>
+      </div>
+      <table class="axtab" id="objDlgTab"></table>
+      <div class="axmsg" id="objDlgMsg"></div>
+      <div class="axbtn"><button id="objDlgAuto" title="Achsen und Einheit erneut aus dem Abgleich mit dem Nennmaß bestimmen">Automatik</button>
+        <button id="objDlgCancel">Abbrechen</button><button class="primary" id="objDlgOk">Übernehmen</button></div>
+    </div>
     <div class="legend">
       <div><span class="sw" style="background:#cfd3d8"></span>i3 (37,5 cm)</div>
       <div><span class="sw" style="background:#aab0b8"></span>i2 (25 cm)</div>
@@ -83,6 +131,8 @@
 // ===== Klassisches App-Skript (ohne Modulauflösung testbar) =====
 // Shared-Code (buildWall/Opening/store, Konturableitung) wird via window.SEMBLA injiziert.
 let buildWall, Opening, store, topLagen, oberkantenAbschnitte, lagenKanten, lagenOberkanteMm;
+// OBJ-Aufbereitung (Achsen, Einheit, Ursprung) — gemeinsam mit dem IFC-Export aus sembla-ifc.js.
+let objStein, objAchsenAuto, objTiefenAchse, normObjAchsen, parseObj, OBJ_TOLERANZ_MM=5;
 
 const $=id=>document.getElementById(id);
 const MM=0.001; // mm -> Szene (m)
@@ -90,6 +140,7 @@ let scene, camera, renderer, group, WALL=null, currentId=null, THREE_OK=false;
 let orbit={tgt:null,r:6,theta:-0.9,phi:1.05};
 const opt={stones:true,edges:true,tension:true,labels:true,real:false};
 const OBJTEXT={i2:null,i3:null};   // OBJ-Quelltext je Steintyp (aus Storage)
+const OBJACHSEN={i2:null,i3:null}; // Achsen-Zuordnung je Steintyp (aus Storage); null = Automatik
 const OBJCACHE={};                 // geparste THREE-Geometrie je Steintyp
 
 // ---- Three.js-Aufbau ----
@@ -118,23 +169,23 @@ function updateCam(){
   const z=o.tgt.z+o.r*Math.sin(o.phi)*Math.sin(o.theta);
   camera.position.set(x,y,z); camera.lookAt(o.tgt);
 }
-function parseObjScene(text){ // -> {pos} in Szene-Koords (x=Länge, y=Höhe, z=Tiefe), bereits *MM
-  const V=[],P=[]; const lines=text.split("\n");
-  for(const ln of lines){
-    if(ln[0]==="v"&&ln[1]===" "){ const p=ln.split(/\s+/); V.push([+p[1],+p[2],+p[3]]); }
-    else if(ln[0]==="f"&&ln[1]===" "){ const toks=ln.trim().split(/\s+/).slice(1);
-      const idx=toks.map(t=>{const a=t.split("/");return {v:parseInt(a[0],10)-1};});
-      // Y/Z-Tausch ist eine Spiegelung -> Umlaufrichtung umdrehen (0,i+1,i), damit Außenflächen außen bleiben
-      for(let i=1;i<idx.length-1;i++){ for(const k of [0,i+1,i]){ const vv=V[idx[k].v];
-        P.push(vv[0]*MM, vv[2]*MM, vv[1]*MM);                 // length, height(objZ), depth(objY)
-      } }
-    }
-  }
-  return {pos:new Float32Array(P)};
+// OBJ-Text -> {pos} in Szene-Koords (x=Länge, y=Höhe, z=Tiefe), bereits *MM.
+// Achslage, Einheit und Ursprung der DATEI sind beliebig: `objStein` (sembla-ifc.js) bringt sie
+// auf die kanonische Lage X=Länge, Y=Tiefe, Z=Höhe in mm mit der Min-Ecke im Ursprung — mit der
+// gespeicherten Zuordnung, sonst per Automatik aus dem Nennmaß des Steintyps. Frueher stand hier
+// ein fester Y/Z-Tausch ohne Ursprungs- und Einheitenbezug: eine Y-oben-Datei lag flach in der Wand.
+function parseObjScene(text,typ,achsen){
+  const st=objStein(text,typ,achsen), V=st.V, P=[];
+  // kanonisch (Länge,Tiefe,Höhe) -> Szene (Länge,Höhe,Tiefe) ist eine Spiegelung ->
+  // Umlaufrichtung umdrehen (0,i+1,i), damit Außenflächen außen bleiben
+  for(const idx of st.faces){ for(let i=1;i<idx.length-1;i++){ for(const k of [0,i+1,i]){ const vv=V[idx[k]];
+    P.push(vv[0]*MM, vv[2]*MM, vv[1]*MM); } } }
+  return {pos:new Float32Array(P), stein:st};
 }
 function stoneGeom(type){ if(OBJCACHE[type]) return OBJCACHE[type];
   const txt=OBJTEXT[type]; if(!txt||!txt.trim()) return null;
-  const d=parseObjScene(txt); const g=new THREE.BufferGeometry();
+  const d=parseObjScene(txt,type,OBJACHSEN[type]); if(!d.pos.length) return null;   // keine Geometrie -> Quader
+  const g=new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(d.pos,3));
   g.computeVertexNormals();   // Normalen aus korrekt orientierter Geometrie -> saubere, massive Schattierung
   OBJCACHE[type]=g; return g;
@@ -287,22 +338,104 @@ function setupStoreSync(){
   });
 }
 
-// ---- OBJ-Loader (inline, Speicherung über storage.js: sembla:obj:i2/i3) ----
+// ---- OBJ-Loader (inline, Speicherung über storage.js: sembla:obj:i2/i3 samt Achsen-Zuordnung) ----
+const hatObj=t=>!!(OBJTEXT[t]&&OBJTEXT[t].trim());
+const ACHSE_TXT=a=>(a[0]==='-'?'−':'+')+a[1].toUpperCase();
+const mmTxt=n=>(Math.round(n*10)/10).toLocaleString('de-DE',{maximumFractionDigits:1});
+/** Aufbereitete Steingeometrie des Typs (oder null) — mit `achsen` als Probe, sonst wie gespeichert. */
+function objInfo(t,achsen){ return hatObj(t)?objStein(OBJTEXT[t],t,achsen===undefined?OBJACHSEN[t]:achsen):null; }
 function objStatus(){ const s=$('objStatus'); if(!s) return;
-  const h=t=>!!(OBJTEXT[t]&&OBJTEXT[t].trim());
-  s.textContent='Geometrie geladen — i2: '+(h('i2')?'✓':'—')+'   ·   i3: '+(h('i3')?'✓':'—')
-    +(h('i2')&&h('i3')?'' : '   (i2_SEMBLA.obj / i3_SEMBLA.obj wählen)'); }
+  s.textContent='Geometrie geladen — i2: '+(hatObj('i2')?'✓':'—')+'   ·   i3: '+(hatObj('i3')?'✓':'—')
+    +(hatObj('i2')&&hatObj('i3')?'' : '   (i2_SEMBLA.obj / i3_SEMBLA.obj wählen)');
+  // Je Steintyp: erkannte Maße gegen das Nennmaß und die geltende Zuordnung.
+  for(const t of ['i2','i3']){ const el=$('objInfo'+t.toUpperCase()), bt=$('objAx'+t.toUpperCase());
+    const st=objInfo(t); if(bt) bt.disabled=!st;
+    if(!el) continue;
+    if(!st){ el.innerHTML=''; continue; }
+    const a=st.achsen, m=st.masse;
+    el.innerHTML=(m?mmTxt(m.laenge)+' × '+mmTxt(m.tiefe)+' × '+mmTxt(m.hoehe)+' mm ':'')
+      +(st.passt?'<span class="ok">✓ passt</span>':'<span class="no">✗ weicht vom Nennmaß ab</span>')
+      +'<br>Länge '+ACHSE_TXT(a.laenge)+' · Hoch '+ACHSE_TXT(a.hoehe)+' · '+a.einheit+(st.automatik?' (Automatik)':''); } }
 function objRefresh(){ delete OBJCACHE.i2; delete OBJCACHE.i3;
   const cr=$('cReal'); if(cr&&!cr.checked&&(OBJTEXT.i2||OBJTEXT.i3)){ cr.checked=true; opt.real=true; }
   if(WALL&&THREE_OK) build(WALL); }
-function objSet(t,text){ OBJTEXT[t]=text; try{ if(store&&store.setzeObj) store.setzeObj(t,text); }catch(e){} objStatus(); objRefresh(); }
-function objRestore(){ for(const t of ['i2','i3']){ try{ const v=store&&store.holeObj?store.holeObj(t):null; if(v) OBJTEXT[t]=v; }catch(e){} } objStatus(); objRefresh(); }
+function objSet(t,text){
+  const roh=parseObj(text);
+  if(!roh.V.length||!roh.faces.length){   // nichts Brauchbares -> nichts ersetzen, benannt melden
+    objStatus(); const s=$('objStatus'); if(s) s.textContent='Die gewählte '+t+'-Datei enthält keine OBJ-Geometrie (keine Punkte/Flächen) — nicht übernommen.';
+    return false; }
+  if(DLG&&DLG.typ===t) achsDlgZu(false);
+  const auto=objAchsenAuto(roh.V,t);
+  OBJTEXT[t]=text; OBJACHSEN[t]=auto.achsen;   // Zuordnung per Automatik vorbelegt und MIT der Datei gespeichert
+  let gespeichert=true; try{ if(store&&store.setzeObj) store.setzeObj(t,text,auto.achsen); }catch(e){ gespeichert=false; }
+  objStatus(); objRefresh();
+  if(!gespeichert){ const s=$('objStatus'); if(s) s.textContent+='   ·   '+t+' konnte nicht im Browser gespeichert werden (Speicher voll) — gilt nur bis zum Neuladen.'; }
+  // Passt keine Zuordnung zum Nennmaß, wird nichts geraten: der Dialog geht auf und sagt es.
+  if(!auto.passt) achsDlgAuf(t);
+  return true;
+}
+function objRestore(){ for(const t of ['i2','i3']){ try{ const v=store&&store.holeObj?store.holeObj(t):null; if(v) OBJTEXT[t]=v;
+      // Gespeicherte Zuordnung; fehlt sie (Altbestand vor dieser Fassung) oder ist sie ungültig,
+      // gilt beim Lesen die Automatik — zurückgeschrieben wird dabei nichts.
+      OBJACHSEN[t]=normObjAchsen(store&&store.holeObjAchsen?store.holeObjAchsen(t):null);
+    }catch(e){} } objStatus(); objRefresh(); }
+
+// ---- Dialog „Achsen-Zuordnung" (je Steintyp) ----
+// Jede Wahl wirkt sofort auf die Vorschau (Probe in OBJACHSEN); „Übernehmen" speichert sie
+// zusammen mit der OBJ, „Abbrechen" stellt die vorige Zuordnung wieder her.
+let DLG=null;   // {typ, vorher}
+function achsDlgWahl(){ const laenge=$('objAxL').value, hoehe=$('objAxH').value;
+  if(laenge[1]===hoehe[1]) return null;
+  return normObjAchsen({laenge, hoehe, tiefe:$('objAxT').value||null, einheit:$('objAxU').value}); }
+/** Tiefe: die verbleibende Achse in beiden Richtungen; rechtshändig = reine Drehung. */
+function achsDlgTiefe(wahl){ const sel=$('objAxT'), laenge=$('objAxL').value, hoehe=$('objAxH').value;
+  if(laenge[1]===hoehe[1]){ sel.innerHTML=''; sel.value=''; sel.disabled=true; return; }
+  const rh=objTiefenAchse(laenge,hoehe), lh=(rh[0]==='+'?'-':'+')+rh[1];
+  sel.disabled=false;
+  sel.innerHTML='<option value="'+rh+'">'+ACHSE_TXT(rh)+'</option><option value="'+lh+'">'+ACHSE_TXT(lh)+' (gespiegelt)</option>';
+  sel.value=(wahl===lh)?lh:rh; }
+function achsDlgZeige(){ if(!DLG) return; const t=DLG.typ, a=achsDlgWahl(), msg=$('objDlgMsg'), okB=$('objDlgOk');
+  const roh=objInfo(t,null);   // Rohmaße + Nennmaß (unabhängig von der Wahl)
+  const bb=roh&&roh.bbox, soll=roh&&roh.soll;
+  $('objDlgText').innerHTML='Datei <b>'+t+'</b>: Ausdehnung X '+(bb?mmTxt(bb.groesse[0]):'–')+' · Y '+(bb?mmTxt(bb.groesse[1]):'–')+' · Z '+(bb?mmTxt(bb.groesse[2]):'–')
+    +' (Dateieinheiten). Der Nullpunkt wird immer auf die untere vordere linke Ecke gelegt.';
+  if(!a){ $('objDlgTab').innerHTML=''; msg.className='axmsg no'; msg.textContent='Längs- und Hochachse müssen verschiedene Achsen der Datei sein.'; okB.disabled=true; return; }
+  const st=objInfo(t,a), m=st.masse;
+  const zeile=(name,k)=>{ const gut=soll&&Math.abs(m[k]-soll[k])<=OBJ_TOLERANZ_MM;
+    return '<tr><td>'+name+'</td><td>'+mmTxt(m[k])+' mm</td><td>'+(soll?mmTxt(soll[k])+' mm':'–')+'</td><td class="'+(gut?'ok':'no')+'">'+(gut?'✓':'✗')+'</td></tr>'; };
+  $('objDlgTab').innerHTML='<tr><th></th><th>erkannt</th><th>Nennmaß</th><th></th></tr>'+zeile('Länge','laenge')+zeile('Tiefe','tiefe')+zeile('Höhe','hoehe');
+  okB.disabled=false;
+  if(st.passt){ msg.className='axmsg'; msg.textContent='Maße passen zum Nennmaß. Steht der Stein kopf oder mit der Rückseite vorn, das Vorzeichen der Achse wechseln.'; }
+  else { msg.className='axmsg no'; msg.textContent='Die Maße weichen vom Nennmaß des '+t+' ab — Achsen oder Einheit prüfen. Passt keine Wahl, ist es vermutlich nicht die richtige Datei.'; }
+  // Probe sofort in der Vorschau zeigen
+  OBJACHSEN[t]=a; objStatus(); objRefresh();
+}
+function achsDlgSetze(a){ $('objAxL').value=a.laenge; $('objAxH').value=a.hoehe; $('objAxU').value=a.einheit; achsDlgTiefe(a.tiefe); }
+function achsDlgAuf(t){ if(!hatObj(t)) return; if(DLG) achsDlgZu(false);
+  const st=objInfo(t); DLG={typ:t, vorher:OBJACHSEN[t]};
+  $('objDlgTitel').textContent='Achsen-Zuordnung – '+t;
+  achsDlgSetze(st.achsen); $('objDlg').hidden=false; achsDlgZeige(); }
+function achsDlgZu(uebernehmen){ if(!DLG) return; const t=DLG.typ;
+  if(uebernehmen){ const a=achsDlgWahl(); if(!a) return;
+    OBJACHSEN[t]=a; try{ if(store&&store.setzeObjAchsen) store.setzeObjAchsen(t,a); }catch(e){} }
+  else OBJACHSEN[t]=DLG.vorher;
+  DLG=null; $('objDlg').hidden=true; objStatus(); objRefresh(); }
+function achsDlgAuto(){ if(!DLG) return; achsDlgSetze(objAchsenAuto(parseObj(OBJTEXT[DLG.typ]).V,DLG.typ).achsen); achsDlgZeige(); }
 function bindObj(){
   ['i2','i3'].forEach(t=>{ const inp=$('obj'+t.toUpperCase());
     if(inp) inp.addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
-      const rd=new FileReader(); rd.onload=()=>objSet(t,String(rd.result||'')); rd.readAsText(f); ev.target.value=''; }); });
+      const rd=new FileReader(); rd.onload=()=>objSet(t,String(rd.result||'')); rd.readAsText(f); ev.target.value=''; });
+    const ax=$('objAx'+t.toUpperCase()); if(ax) ax.addEventListener('click',()=>achsDlgAuf(t)); });
   const clr=$('objClear');
-  if(clr) clr.addEventListener('click',()=>{ for(const t of ['i2','i3']){ OBJTEXT[t]=null; try{ if(store&&store.loescheObj) store.loescheObj(t); }catch(e){} } delete OBJCACHE.i2; delete OBJCACHE.i3; objStatus(); if(WALL&&THREE_OK) build(WALL); });
+  if(clr) clr.addEventListener('click',()=>{ if(DLG){ DLG=null; $('objDlg').hidden=true; }
+    for(const t of ['i2','i3']){ OBJTEXT[t]=null; OBJACHSEN[t]=null; try{ if(store&&store.loescheObj) store.loescheObj(t); }catch(e){} } delete OBJCACHE.i2; delete OBJCACHE.i3; objStatus(); if(WALL&&THREE_OK) build(WALL); });
+  // Längs-/Hochachse geändert -> Tiefe rechtshändig neu vorschlagen; Tiefe/Einheit -> nur neu zeigen.
+  ['objAxL','objAxH'].forEach(id=>$(id).addEventListener('change',()=>{ achsDlgTiefe(null); achsDlgZeige(); }));
+  ['objAxT','objAxU'].forEach(id=>$(id).addEventListener('change',()=>achsDlgZeige()));
+  $('objDlgAuto').addEventListener('click',achsDlgAuto);
+  $('objDlgCancel').addEventListener('click',()=>achsDlgZu(false));
+  $('objDlgOk').addEventListener('click',()=>achsDlgZu(true));
+  $('objDlg').addEventListener('keydown',ev=>{ if(ev&&ev.key==='Escape') achsDlgZu(false); });
 }
 
 // ---- Ereignis-Bindung ----
@@ -313,7 +446,8 @@ function bindEvents(){
   bindObj();
 }
 
-window.__ifc={applyWand,build,clearWall,parseObjScene,stoneGeom,opt,OBJTEXT,
+window.__ifc={applyWand,build,clearWall,parseObjScene,stoneGeom,opt,OBJTEXT,OBJACHSEN,
+  objSet,objRestore,objInfo,achsDlgAuf,achsDlgZu,
   kopfblechSegmente,bodenblechSegmente,
   get wall(){return WALL;}, get gruppe(){return group;}};
 
@@ -322,6 +456,9 @@ window.__ifcInit=function(){
   buildWall=S.buildWall; Opening=S.Opening; store=S.store;
   topLagen=S.topLagen; oberkantenAbschnitte=S.oberkantenAbschnitte;
   lagenKanten=S.lagenKanten; lagenOberkanteMm=S.lagenOberkanteMm;
+  objStein=S.objStein; objAchsenAuto=S.objAchsenAuto; objTiefenAchse=S.objTiefenAchse;
+  normObjAchsen=S.normObjAchsen; parseObj=S.parseObj;
+  if(S.OBJ_TOLERANZ_MM!=null) OBJ_TOLERANZ_MM=S.OBJ_TOLERANZ_MM;
   THREE_OK = (typeof THREE!=='undefined');
   if(THREE_OK){ try{ initThree(); }catch(e){ THREE_OK=false; } }
   if(!THREE_OK){ const m=$('stagemsg'); if(m){ m.style.display='flex';
@@ -337,9 +474,11 @@ window.__ifcInit=function(){
   import { buildWall, Opening } from './shared/sembla-core.js';
   import * as store from './shared/storage.js';
   import { topLagen, oberkantenAbschnitte, lagenKantenVonWand, lagenOberkanteMm } from './shared/sembla-montage.js';
+  import { objStein, objAchsenAuto, objTiefenAchse, normObjAchsen, parseObj, OBJ_TOLERANZ_MM } from './shared/sembla-ifc.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, store, topLagen, oberkantenAbschnitte,
-    lagenKanten: lagenKantenVonWand, lagenOberkanteMm };
+    lagenKanten: lagenKantenVonWand, lagenOberkanteMm,
+    objStein, objAchsenAuto, objTiefenAchse, normObjAchsen, parseObj, OBJ_TOLERANZ_MM };
   mountNavbar(6);
   window.__ifcInit();
 </script>

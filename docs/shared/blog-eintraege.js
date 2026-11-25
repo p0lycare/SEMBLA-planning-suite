@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261125-01",
+    datum: "2026-11-25",
+    typ: "fix",
+    issue: 24,
+    titel: "3D-Vorschau: hochgeladene Steinmodelle stehen richtig in der Wand – Achsen und Einheit werden erkannt, sind einstellbar",
+    testbitte: "Modul 6: i2_SEMBLA.obj und i3_SEMBLA.obj laden – Steine stehen aufrecht und bündig in der Wand. "
+      + "„Achsen…“ öffnen: erkannte Maße stehen neben dem Nennmaß; Hochachse umstellen wirkt sofort, „Abbrechen“ stellt zurück",
+  },
+  {
     id: "chg-20261123-02",
     datum: "2026-11-23",
     typ: "fix",

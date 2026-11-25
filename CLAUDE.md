@@ -1285,7 +1285,11 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      ist. **Eine** benannte Ausnahme beim Import: `normBrandklasse` aus `storage.js` — ein reiner
      Normalisierer ohne Speicherzugriff, der die kanonischen Werte F0/F30 samt Standard mitbringt;
      aus `sembla-lageplan.js` wird **nichts** importiert (Wortlaut-/Farbgleichheit sichert der Test).
-   - `sembla-ifc.js` — IFC4-Export (`wandelementToIfc` + `parseObj`/`meshStats`; genutzt vom zentralen Export).
+   - `sembla-ifc.js` — IFC4-Export (`wandelementToIfc` + `parseObj`/`meshStats`; genutzt vom zentralen Export)
+     und die **Achsen-Zuordnung hochgeladener Steinmodelle** (`objStein`, `objAchsenAuto`, `normObjAchsen`,
+     `objNormiert`, `STEIN_NENNMASS`) — der **eine** Weg vom OBJ-Text zur einbaufertigen Geometrie für die
+     3D-Vorschau (Modul 6) **und** den OBJ-Pfad von `wandelementToIfc`; eigene Tests
+     (`tests/module/test-obj-achsen.mjs`).
    - `sembla-export.js` — baut die Export-Dateien (Stückliste/Zuschnitt-CSV, Montage-HTML,
      **Zeichnung als SVG + druckbares HTML**, **Statischer-Nachweis-HTML**, IFC-Text) für Modul 0. Das
      Nachweis-Dokument kommt aus dem **vollen** Schermer-Nachweis (`sembla-statik.js`) — nie aus dem vereinfachten Engine-Modell —
@@ -1524,7 +1528,20 @@ andere Datei mitkommt, ist es eine Produktänderung und braucht genau einen Eint
 öffentliches Repo). `Bauteil-OBJ/` ist gitignored und nur lokal vorhanden. Modul 6 bettet die
 Geometrie nicht ein, sondern lädt sie zur Laufzeit per Datei-Upload (lokal im Browser); sie wird über
 `storage.js` in `localStorage` (`sembla:obj:i2` / `:i3`) gemerkt. Der OBJ-Loader ist **inline** in
-Modul 6. Die realen Modelle kommen **ausschließlich** über diesen manuellen Browser-Import — nie über
+Modul 6. **Die Datei muss keine bestimmte Achslage mitbringen (seit 2026-11-25):** `objStein()`
+(`sembla-ifc.js`) bringt jede Datei auf die kanonische Lage X=Länge, Y=Tiefe, Z=Höhe in mm mit der
+**Min-Ecke der BBox im Ursprung**. Die Zuordnung `{laenge, tiefe, hoehe, einheit}` (je Achse ±X/±Y/±Z,
+Einheit mm/cm/m) wird beim Upload per **Automatik** vorbelegt — Abgleich der BBox mit dem Nennmaß des
+Steintyps (i2 250 × 125 × 200, i3 375 × 125 × 200; bei Gleichstand gewinnt die kanonische Lage, die
+Tiefe wird rechtshändig ergänzt) — und **zusammen mit der OBJ gespeichert** (`sembla:obj:<typ>:achsen`,
+`setzeObj(typ, text, achsen)`/`holeObjAchsen`/`setzeObjAchsen`). Der Dialog **„Achsen…"** in Modul 6
+zeigt erkannte Maße gegen das Nennmaß und lässt nachkorrigieren (Probe wirkt sofort, gespeichert wird
+erst mit „Übernehmen"); passt keine Zuordnung, öffnet er sich von selbst — geraten oder skaliert wird
+nichts. Altbestand ohne gespeicherte Zuordnung läuft beim Lesen durch die Automatik. Vorher setzte
+die Vorschau die kanonische Lage fest voraus: eine Y-oben-Datei (Rhino) lag flach in der Wand.
+Reine Darstellung der Bauteilgeometrie — keine Fachregel, kein Schema-/Formatsprung. Der zentrale
+IFC-Export nutzt weiterhin **keine** OBJ-Geometrie; `wandelementToIfc(…, {realGeom, objText, objAchsen})`
+geht aber durch dieselbe Aufbereitung. Die realen Modelle kommen **ausschließlich** über diesen manuellen Browser-Import — nie über
 Tests. **Node-Smoke-Tests sind autark und lesen keine Dateien aus `Bauteil-OBJ/`**: Wo OBJ-Geometrie
 gebraucht wird (`tests/module/smoke_3d.mjs`), definiert der Test eine minimale synthetische OBJ-Zeichenkette
 inline. So läuft `npm run test:all` auch in einer sauberen Arbeitskopie ohne die vertraulichen Modelle grün.

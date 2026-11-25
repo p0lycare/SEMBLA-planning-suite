@@ -83,8 +83,27 @@ t("loeschen des aktiven: Auswahl aufgehoben", store.aktivId() === null || store.
 // 9) OBJ-Speicher ----------------------------------------------------------
 store.setzeObj("i2", "OBJDATEN");
 t("obj: gespeichert/gelesen", store.holeObj("i2") === "OBJDATEN");
+t("obj: ohne Achsen-Zuordnung gespeichert -> keine Zuordnung (Automatik)", store.holeObjAchsen("i2") === null);
+// Die Achsen-Zuordnung (Modul 6) wird ZUSAMMEN mit der OBJ gespeichert.
+const ACHSEN = { laenge: "+x", tiefe: "-z", hoehe: "+y", einheit: "mm" };
+store.setzeObj("i2", "OBJDATEN", ACHSEN);
+t("obj: Achsen-Zuordnung mit der Datei gespeichert/gelesen",
+  JSON.stringify(store.holeObjAchsen("i2")) === JSON.stringify(ACHSEN) && store.holeObj("i2") === "OBJDATEN");
+t("obj: Zuordnung gilt je Steintyp", store.holeObjAchsen("i3") === null);
+store.setzeObjAchsen("i2", { ...ACHSEN, einheit: "cm" });
+t("obj: Zuordnung nachtraeglich geaendert, Datei unberuehrt",
+  store.holeObjAchsen("i2").einheit === "cm" && store.holeObj("i2") === "OBJDATEN");
+store.setzeObj("i2", "NEUE DATEI");
+t("obj: neue Datei ohne Zuordnung entfernt die alte (sie galt der alten Datei)",
+  store.holeObjAchsen("i2") === null && store.holeObj("i2") === "NEUE DATEI");
+store.setzeObjAchsen("i2", ACHSEN); store.setzeObjAchsen("i2", null);
+t("obj: setzeObjAchsen(null) entfernt die Zuordnung", store.holeObjAchsen("i2") === null);
+localStorage.setItem("sembla:obj:i2:achsen", "{kaputt");
+t("obj: unlesbare Zuordnung -> null statt Ausnahme", store.holeObjAchsen("i2") === null);
+store.setzeObjAchsen("i2", ACHSEN);
 store.loescheObj("i2");
 t("obj: geloescht", store.holeObj("i2") === null);
+t("obj: Loeschen entfernt auch die Achsen-Zuordnung", store.holeObjAchsen("i2") === null);
 
 // 10) Preis-Roundtrip: geaenderter Einzelpreis ueberlebt Speichern -> v2-JSON
 //     -> Import (Issue #11 / Praezisierung: nur Legacy-`anzahl` wird ignoriert,

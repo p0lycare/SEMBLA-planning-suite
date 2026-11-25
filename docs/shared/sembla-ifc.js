@@ -14,8 +14,12 @@
  * sembla-engine.js / sembla-statik.js / sembla-bom.js.
  *
  * Einheiten: intern mm; IFC exportiert in Metern (Z-aufrecht).
- * OBJ-Konvention der Bauteil-Geometrie: X=Laenge, Y=Tiefe, Z=Hoehe (mm),
- * Nullpunkt unten-vorne-links → 1:1-Uebernahme, nur mm→m.
+ * KANONISCHE Lage der Bauteil-Geometrie: X=Laenge, Y=Tiefe, Z=Hoehe (mm), Nullpunkt
+ * unten-vorne-links. Eine hochgeladene OBJ-Datei muss diese Lage NICHT mitbringen: die
+ * Achsen-Zuordnung (`objStein`, s. u.) bildet Hochachse, Laengsachse, Einheit und Ursprung
+ * der Datei darauf ab — per Automatik aus dem Abgleich der BBox mit dem Nennmass des
+ * Steintyps, im Dialog von Modul 6 nachkorrigierbar. 3D-Vorschau (Modul 6) und der
+ * OBJ-Pfad dieses Exports benutzen DIESELBE Funktion; eine zweite Achsenlogik gibt es nicht.
  *
  * ES-Modul: laeuft im Browser (GH Pages) und wird von den Node-Tests per import geladen.
  */
@@ -35,17 +39,194 @@ export const GRID = 125, COURSE = 200;
 
 // ---------- OBJ ----------
 
-/** OBJ-Text → { V:[[x,y,z]…], faces:[[i,i,i…]…] } (Indizes 0-basiert). */
+/**
+ * OBJ-Text → { V:[[x,y,z]…], faces:[[i,i,i…]…] } (Indizes 0-basiert).
+ * Gelesen werden nur `v` und `f`; Zeilenenden (LF/CRLF), Einrueckung, Tabulatoren und
+ * relative (negative) Flaechenindizes werden verstanden. Flaechen mit weniger als drei
+ * gueltigen Ecken entfallen.
+ */
 export function parseObj(text) {
   const V = [], faces = [];
-  for (const ln of text.split("\n")) {
-    if (ln[0] === "v" && ln[1] === " ") { const p = ln.split(/\s+/); V.push([+p[1], +p[2], +p[3]]); }
-    else if (ln[0] === "f" && ln[1] === " ") {
-      const idx = ln.trim().split(/\s+/).slice(1).map(t => parseInt(t.split("/")[0], 10) - 1);
-      faces.push(idx);
+  for (const roh of String(text || "").split("\n")) {
+    const ln = roh.trim();
+    if (ln[0] === "v" && /\s/.test(ln[1] || "")) {
+      const p = ln.split(/\s+/); V.push([+p[1], +p[2], +p[3]]);
+    } else if (ln[0] === "f" && /\s/.test(ln[1] || "")) {
+      const idx = [];
+      for (const t of ln.split(/\s+/).slice(1)) {
+        const n = parseInt(t.split("/")[0], 10);
+        const i = n < 0 ? V.length + n : n - 1;          // negativ = relativ zum bisher Gelesenen
+        if (Number.isInteger(i) && i >= 0) idx.push(i);
+      }
+      if (idx.length >= 3) faces.push(idx);
     }
   }
+  return { V, faces: faces.filter((f) => f.every((i) => i < V.length && V[i].every(Number.isFinite))) };
+}
+
+// ---------- Achsen-Zuordnung der OBJ-Geometrie ----------
+//
+// Hochgeladene Steinmodelle kommen in verschiedenen Achslagen (Z-oben, Y-oben wie aus
+// Rhino/Blender), Einheiten (mm/cm/m) und mit beliebigem Ursprung. Frueher setzte die
+// Vorschau X=Laenge/Y=Tiefe/Z=Hoehe in mm mit Ursprung in der Steinecke fest voraus — eine
+// Y-oben-Datei lag dann flach in der Wand (125 hoch, 200 tief) und versetzt. Hier wird jede
+// Datei auf die kanonische Lage gebracht: Achsen zuordnen, Einheit umrechnen, Ursprung auf
+// die Min-Ecke der BBox. Das ist reine DARSTELLUNG der Bauteilgeometrie — keine Fachregel,
+// kein Einfluss auf Wandelement, Mengen oder Nachweis.
+
+/** Nennmass je Steintyp in mm — dieselben Rastermasse, mit denen der Core die Wand baut. */
+export const STEIN_NENNMASS = Object.freeze({
+  i2: Object.freeze({ laenge: 2 * GRID, tiefe: THICK, hoehe: COURSE }),
+  i3: Object.freeze({ laenge: 3 * GRID, tiefe: THICK, hoehe: COURSE }),
+});
+
+/** Zulaessige Einheiten einer OBJ-Datei und ihr Faktor nach mm. */
+export const OBJ_EINHEITEN = Object.freeze({ mm: 1, cm: 10, m: 1000 });
+
+/** Kanonische Zuordnung (Datei liegt bereits richtig): X=Laenge, Y=Tiefe, Z=Hoehe, mm. */
+export const OBJ_ACHSEN_STANDARD = Object.freeze({ laenge: "+x", tiefe: "+y", hoehe: "+z", einheit: "mm" });
+
+/** Bis zu dieser Abweichung je Mass (mm) gilt eine Datei als zum Nennmass passend. */
+export const OBJ_TOLERANZ_MM = 5;
+
+const ACHSE_RE = /^[+-][xyz]$/;
+const _idx = (a) => "xyz".indexOf(a[1]);
+const _vz = (a) => (a[0] === "-" ? -1 : 1);
+const _vek = (a) => { const v = [0, 0, 0]; v[_idx(a)] = _vz(a); return v; };
+const _kreuz = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+/**
+ * Prueft und normalisiert eine Achsen-Zuordnung `{laenge, tiefe, hoehe, einheit}` (je Achse
+ * "+x"…"-z"). Die drei Rollen muessen drei VERSCHIEDENE Dateiachsen belegen. Fehlt `tiefe`,
+ * wird sie rechtshaendig ergaenzt. Ungueltig ⇒ `null` (der Aufrufer nimmt dann die Automatik).
+ * @returns {{laenge:string,tiefe:string,hoehe:string,einheit:string}|null}
+ */
+export function normObjAchsen(a) {
+  if (!a || typeof a !== "object") return null;
+  const laenge = String(a.laenge || "").toLowerCase(), hoehe = String(a.hoehe || "").toLowerCase();
+  if (!ACHSE_RE.test(laenge) || !ACHSE_RE.test(hoehe) || _idx(laenge) === _idx(hoehe)) return null;
+  let tiefe = a.tiefe == null || a.tiefe === "" ? objTiefenAchse(laenge, hoehe) : String(a.tiefe).toLowerCase();
+  if (!ACHSE_RE.test(tiefe) || _idx(tiefe) === _idx(laenge) || _idx(tiefe) === _idx(hoehe)) return null;
+  const einheit = a.einheit == null || a.einheit === "" ? "mm" : String(a.einheit).toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(OBJ_EINHEITEN, einheit)) return null;
+  return { laenge, tiefe, hoehe, einheit };
+}
+
+/**
+ * Tiefenachse, die Laengs- und Hochachse zu einem RECHTSHAENDIGEN System ergaenzt
+ * (Laenge × Tiefe = Hoehe) — die Datei wird damit nur gedreht, nie gespiegelt.
+ * @param {string} laenge @param {string} hoehe @returns {string} z. B. "-z"
+ */
+export function objTiefenAchse(laenge, hoehe) {
+  const t = _kreuz(_vek(hoehe), _vek(laenge));
+  const i = t.findIndex((c) => c !== 0);
+  return (t[i] < 0 ? "-" : "+") + "xyz"[i];
+}
+
+/** true, wenn die Zuordnung die Geometrie SPIEGELT (linkshaendig) statt sie nur zu drehen. */
+export function objIstGespiegelt(achsen) {
+  const a = normObjAchsen(achsen); if (!a) return false;
+  const k = _kreuz(_vek(a.laenge), _vek(a.tiefe)), h = _vek(a.hoehe);
+  return k[0] * h[0] + k[1] * h[1] + k[2] * h[2] < 0;
+}
+
+/** BBox der Rohkoordinaten: `{min:[x,y,z], max:[x,y,z], groesse:[x,y,z]}` oder `null` (leer). */
+export function objBBox(V) {
+  if (!Array.isArray(V) || !V.length) return null;
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (const v of V) for (let i = 0; i < 3; i++) {
+    if (v[i] < min[i]) min[i] = v[i];
+    if (v[i] > max[i]) max[i] = v[i];
+  }
+  if (!min.every(Number.isFinite) || !max.every(Number.isFinite)) return null;
+  return { min, max, groesse: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
+}
+
+/** Erkannte Masse in mm unter einer Zuordnung: `{laenge, tiefe, hoehe}` oder `null`. */
+export function objMasse(V, achsen) {
+  const a = normObjAchsen(achsen), bb = objBBox(V);
+  if (!a || !bb) return null;
+  const f = OBJ_EINHEITEN[a.einheit];
+  return { laenge: bb.groesse[_idx(a.laenge)] * f, tiefe: bb.groesse[_idx(a.tiefe)] * f, hoehe: bb.groesse[_idx(a.hoehe)] * f };
+}
+
+/** Groesste Abweichung (mm) der erkannten Masse vom Nennmass des Steintyps; ohne Bezug `null`. */
+export function objAbweichung(masse, typ) {
+  const soll = STEIN_NENNMASS[typ];
+  if (!masse || !soll) return null;
+  return Math.max(Math.abs(masse.laenge - soll.laenge), Math.abs(masse.tiefe - soll.tiefe), Math.abs(masse.hoehe - soll.hoehe));
+}
+
+// Reihenfolge = Vorrang bei Gleichstand: zuerst die kanonische Lage, dann Y-oben (Rhino).
+const _PERMUTATIONEN = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];   // [Laenge, Tiefe, Hoehe]
+
+/**
+ * AUTOMATIK: waehlt Achsen und Einheit so, dass die BBox der Datei am besten zum Nennmass
+ * des Steintyps passt (Laenge/Tiefe/Hoehe). Deterministisch — bei Gleichstand gewinnt die
+ * kanonische Lage in mm. Die Vorzeichen sind aus der BBox NICHT erkennbar: Laengs- und
+ * Hochachse laufen positiv, die Tiefe wird rechtshaendig ergaenzt (reine Drehung, wie der
+ * uebliche Y-oben→Z-oben-Wechsel); steht der Stein kopf oder mit der Rueckseite vorn, wird
+ * das im Dialog korrigiert. Ohne Nennmass (unbekannter Typ) oder ohne Geometrie gilt die
+ * kanonische Zuordnung.
+ * @returns {{achsen:object, masse:object|null, abweichung_mm:number|null, passt:boolean}}
+ */
+export function objAchsenAuto(V, typ) {
+  const soll = STEIN_NENNMASS[typ], bb = objBBox(V);
+  let best = { ...OBJ_ACHSEN_STANDARD }, bestAbw = Infinity;
+  if (soll && bb) {
+    for (const einheit of Object.keys(OBJ_EINHEITEN)) for (const [l, t, h] of _PERMUTATIONEN) {
+      const f = OBJ_EINHEITEN[einheit], g = bb.groesse;
+      const abw = Math.max(Math.abs(g[l] * f - soll.laenge), Math.abs(g[t] * f - soll.tiefe), Math.abs(g[h] * f - soll.hoehe));
+      if (abw < bestAbw) {
+        const laenge = "+" + "xyz"[l], hoehe = "+" + "xyz"[h];
+        bestAbw = abw; best = { laenge, tiefe: objTiefenAchse(laenge, hoehe), hoehe, einheit };
+      }
+    }
+  }
+  const masse = objMasse(V, best), abweichung_mm = objAbweichung(masse, typ);
+  return { achsen: best, masse, abweichung_mm, passt: abweichung_mm != null && abweichung_mm <= OBJ_TOLERANZ_MM };
+}
+
+/**
+ * Bringt geparste OBJ-Geometrie in die kanonische Lage: X=Laenge, Y=Tiefe, Z=Hoehe in mm,
+ * Ursprung IMMER auf der Min-Ecke der BBox (Stein beginnt bei 0/0/0). Spiegelt die
+ * Zuordnung, wird die Umlaufrichtung jeder Flaeche gedreht, damit Aussenflaechen aussen bleiben.
+ * @param {{V:number[][], faces:number[][]}} obj @param {object} achsen gueltige Zuordnung
+ * @returns {{V:number[][], faces:number[][]}}
+ */
+export function objNormiert(obj, achsen) {
+  const a = normObjAchsen(achsen) || { ...OBJ_ACHSEN_STANDARD };
+  const f = OBJ_EINHEITEN[a.einheit];
+  const rolle = [a.laenge, a.tiefe, a.hoehe].map((r) => [_idx(r), _vz(r) * f]);
+  const V = obj.V.map((v) => rolle.map(([i, s]) => v[i] * s));
+  const bb = objBBox(V);
+  if (bb) for (const v of V) for (let i = 0; i < 3; i++) v[i] -= bb.min[i];
+  const faces = objIstGespiegelt(a) ? obj.faces.map((idx) => idx.slice().reverse()) : obj.faces.map((idx) => idx.slice());
   return { V, faces };
+}
+
+/**
+ * DER eine Weg vom OBJ-Text zur einbaufertigen Steingeometrie — fuer die 3D-Vorschau
+ * (Modul 6) UND den OBJ-Pfad des IFC-Exports. Mit gueltiger gespeicherter Zuordnung gilt
+ * diese, sonst die Automatik.
+ * @param {string} text OBJ-Quelltext @param {'i2'|'i3'} typ Steintyp (Nennmass)
+ * @param {object|null} [achsen] gespeicherte Zuordnung; ungueltig/leer ⇒ Automatik
+ * @returns {{V:number[][], faces:number[][], achsen:object, automatik:boolean, bbox:object|null,
+ *   masse:object|null, soll:object|null, abweichung_mm:number|null, passt:boolean, leer:boolean}}
+ *   `V`/`faces` in kanonischer Lage (mm); `bbox` in ROH-Koordinaten der Datei.
+ */
+export function objStein(text, typ, achsen) {
+  const roh = parseObj(text);
+  const gesetzt = normObjAchsen(achsen);
+  const a = gesetzt || objAchsenAuto(roh.V, typ).achsen;
+  const masse = objMasse(roh.V, a), abweichung_mm = objAbweichung(masse, typ);
+  const n = objNormiert(roh, a);
+  return {
+    V: n.V, faces: n.faces, achsen: a, automatik: !gesetzt, bbox: objBBox(roh.V), masse,
+    soll: STEIN_NENNMASS[typ] || null, abweichung_mm,
+    passt: abweichung_mm != null && abweichung_mm <= OBJ_TOLERANZ_MM,
+    leer: !roh.V.length || !n.faces.length,
+  };
 }
 
 /**
@@ -112,6 +293,8 @@ function esc(s) { return String(s).replace(/'/g, "''"); }
  * @param {boolean} [opts.stones=true]  jeden Stein als IfcBuildingElementProxy ergaenzen
  * @param {boolean} [opts.realGeom=false] echte OBJ-Geometrie je Steintyp verwenden
  * @param {{i2?:string,i3?:string}} [opts.objText] OBJ-Quelltext je Steintyp (nur bei realGeom)
+ * @param {{i2?:object,i3?:object}} [opts.objAchsen] gespeicherte Achsen-Zuordnung je Steintyp
+ *   (wie in Modul 6 gewaehlt); fehlt sie, gilt dieselbe Automatik wie in der 3D-Vorschau
  * @returns {string} IFC4 (ISO-10303-21)
  */
 export function wandelementToIfc(wall, opts = {}) {
@@ -170,7 +353,10 @@ export function wandelementToIfc(wall, opts = {}) {
   if (realGeom) {
     for (const t of ["i2", "i3"]) {
       const txt = opts.objText && opts.objText[t]; if (!txt) continue;
-      const { V, faces } = parseObj(txt);
+      // Dieselbe Aufbereitung wie die 3D-Vorschau (Achsen, Einheit, Ursprung auf die Min-Ecke):
+      // Vorschau und IFC zeigen damit zwangslaeufig denselben Stein an derselben Stelle.
+      const { V, faces, leer } = objStein(txt, t, opts.objAchsen && opts.objAchsen[t]);
+      if (leer) continue;                                     // keine Geometrie ⇒ Quader
       const brep = facetedBrepEntities(f, F, V, faces);
       const rep = f.e("IFCSHAPEREPRESENTATION", `${ctx},'Body','Brep',(${brep})`);
       repMap[t] = f.e("IFCREPRESENTATIONMAP", `${axis3},${rep}`);

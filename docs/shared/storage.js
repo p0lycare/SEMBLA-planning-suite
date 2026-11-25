@@ -13,6 +13,8 @@
  *   sembla:version   <Zahl>                       Schema-Version (Migration)
  *   sembla:obj:i2    <string>                     hochgeladene Bauteilgeometrie i2
  *   sembla:obj:i3    <string>                     hochgeladene Bauteilgeometrie i3
+ *   sembla:obj:<typ>:achsen  {laenge,tiefe,hoehe,einheit}  Achsen-Zuordnung der OBJ-Datei
+ *                                                 (Modul 6; fehlt sie, gilt die Automatik)
  *   sembla:kataloge  { [id]: …SEMBLA-Bauteilkatalog } Bauteilkataloge (eigene Ressource, [L-12])
  *   sembla:aktiv:katalog       "<id>"                    Rueckfall, solange KEIN Projekt aktiv ist
  *   sembla:projekte  [ …SEMBLA-Projektmappe ]      MEHRERE Projektmappen — je Projekt eine ([L-6])
@@ -78,6 +80,7 @@ const K_ELEM = "sembla:elemente";
 const K_AKTIV = "sembla:aktiv";
 const K_VERSION = "sembla:version";
 const K_OBJ = (typ) => `sembla:obj:${typ}`;
+const K_OBJ_ACHSEN = (typ) => `sembla:obj:${typ}:achsen`;
 const K_KATALOG = "sembla:katalog";          // Altbestand vor v5 (Einzel-Slot) — nur Migration
 const K_KATALOGE = "sembla:kataloge";
 const K_AKTIV_KAT = "sembla:aktiv:katalog";   // nur wirksam, solange KEIN Projekt aktiv ist
@@ -713,14 +716,45 @@ export function importiereDatei(file) {
 export function holeObj(typ) {
   try { return localStorage.getItem(K_OBJ(typ)); } catch { return null; }
 }
-/** @param {'i2'|'i3'} typ @param {string} inhalt */
-export function setzeObj(typ, inhalt) {
+/**
+ * Speichert die OBJ-Datei eines Steintyps ZUSAMMEN mit ihrer Achsen-Zuordnung. Die
+ * Zuordnung gehoert zur Datei: ohne `achsen` wird eine frueher gespeicherte entfernt (sie
+ * galt der alten Datei), und es gilt wieder die Automatik.
+ * @param {'i2'|'i3'} typ @param {string} inhalt
+ * @param {{laenge:string,tiefe:string,hoehe:string,einheit:string}|null} [achsen]
+ */
+export function setzeObj(typ, inhalt, achsen) {
   localStorage.setItem(K_OBJ(typ), inhalt);
+  if (achsen && typeof achsen === "object") localStorage.setItem(K_OBJ_ACHSEN(typ), JSON.stringify(achsen));
+  else localStorage.removeItem(K_OBJ_ACHSEN(typ));
   _benachrichtige();
 }
 /** @param {'i2'|'i3'} typ */
 export function loescheObj(typ) {
   localStorage.removeItem(K_OBJ(typ));
+  localStorage.removeItem(K_OBJ_ACHSEN(typ));
+  _benachrichtige();
+}
+/**
+ * Achsen-Zuordnung der hochgeladenen OBJ-Datei (Hochachse, Laengsachse, Tiefe, Einheit) —
+ * reine Darstellungsangabe der Bauteilgeometrie, keine Planungsdaten. Gelesen wird roh;
+ * geprueft und normalisiert wird sie beim Verwenden (`normObjAchsen`, sembla-ifc.js).
+ * @param {'i2'|'i3'} typ @returns {object|null} `null` = nichts gespeichert ⇒ Automatik
+ */
+export function holeObjAchsen(typ) {
+  try {
+    const roh = localStorage.getItem(K_OBJ_ACHSEN(typ));
+    const a = roh ? JSON.parse(roh) : null;
+    return a && typeof a === "object" ? a : null;
+  } catch { return null; }
+}
+/**
+ * Setzt die Achsen-Zuordnung der bereits gespeicherten OBJ-Datei; `null` entfernt sie
+ * (zurueck zur Automatik). @param {'i2'|'i3'} typ @param {object|null} achsen
+ */
+export function setzeObjAchsen(typ, achsen) {
+  if (achsen && typeof achsen === "object") localStorage.setItem(K_OBJ_ACHSEN(typ), JSON.stringify(achsen));
+  else localStorage.removeItem(K_OBJ_ACHSEN(typ));
   _benachrichtige();
 }
 
